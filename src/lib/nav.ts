@@ -5,8 +5,8 @@ export function buildNav(active: string): NavItem[] {
     { label: "Scanner", href: "/" },
     { label: "Discover", href: "/discover" },
     { label: "Builder", href: "/builder" },
-    { label: "Listings", href: "/listings", badge: 47 },
-    { label: "Orders", href: "/orders", badge: 3 },
+    { label: "Listings", href: "/listings" },
+    { label: "Orders", href: "/orders" },
     { label: "Inventory", href: "/inventory" },
   ];
   return items.map((item) => ({

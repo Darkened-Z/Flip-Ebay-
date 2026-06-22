@@ -10,14 +10,12 @@ import type { ScanResult } from "@/lib/mockData";
 import { IconAlertTriangle } from "@tabler/icons-react";
 
 export function ScannerClient({
-  initial,
   initialUrl,
 }: {
-  initial: ScanResult;
   initialUrl?: string;
 }) {
   const router = useRouter();
-  const [result, setResult] = useState<ScanResult | null>(initial);
+  const [result, setResult] = useState<ScanResult | null>(null);
   const [pending, setPending] = useState(false);
   const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +57,7 @@ export function ScannerClient({
     <>
       <div style={{ marginTop: 20 }}>
         <SearchBar
-          defaultValue={result?.source.url ?? ""}
+          defaultValue={initialUrl ?? result?.source.url ?? ""}
           onScan={handleScan}
           pending={pending}
         />

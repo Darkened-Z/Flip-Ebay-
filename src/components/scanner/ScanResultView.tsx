@@ -12,6 +12,7 @@ import {
   IconCheck,
   IconShieldCheck,
   IconArrowRight,
+  IconExternalLink,
 } from "@tabler/icons-react";
 
 const card: React.CSSProperties = {
@@ -139,6 +140,12 @@ export function ScanResultView({
   const s = result;
   const todayIndex = s.velocity.bars.length - 4;
   const worth = s.verdict.label === "Worth listing";
+  const amazonUrl =
+    s.source.id && s.source.id !== "UNKNOWN"
+      ? `https://www.amazon.com/dp/${s.source.id}`
+      : s.source.url.startsWith("http")
+        ? s.source.url
+        : `https://${s.source.url}`;
 
   return (
     <>
@@ -171,6 +178,24 @@ export function ScanResultView({
               >
                 <IconTruck size={13} /> Ships from Amazon · Prime
               </span>
+              <div style={{ marginTop: 8 }}>
+                <a
+                  href={amazonUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--color-flip)",
+                    textDecoration: "none",
+                  }}
+                >
+                  <IconExternalLink size={13} /> Open on Amazon
+                </a>
+              </div>
             </div>
           </div>
           <div

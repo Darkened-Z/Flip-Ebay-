@@ -292,6 +292,20 @@ export default function OrdersPage() {
     <main className="page">
       <AppHeader tagline="Order fulfillment" nav={buildNav("/orders")} />
 
+      <div
+        style={{
+          marginTop: 16,
+          padding: "10px 14px",
+          background: "var(--color-amber-soft)",
+          color: "var(--color-amber-ink)",
+          borderRadius: 12,
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        Sample data — order tracking isn&apos;t live yet (no eBay order sync).
+      </div>
+
       {/* Summary band */}
       <div
         style={{

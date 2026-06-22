@@ -1,60 +1,86 @@
 import { AppHeader } from "@/components/brand";
 import { StatsRow } from "@/components/listings/StatsRow";
-import { FilterChips } from "@/components/listings/FilterChips";
 import { ListingsTable } from "@/components/listings/ListingsTable";
-import { dashboardSummary, listings } from "@/lib/listingsData";
 import { getUserListings } from "@/lib/data/listings";
 import { buildNav } from "@/lib/nav";
-
-const pageBtn = (active?: boolean, muted?: boolean): React.CSSProperties => ({
-  padding: "6px 11px",
-  borderRadius: 9,
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: "pointer",
-  background: active ? "var(--color-ink)" : "var(--color-surface)",
-  color: active
-    ? "#fff"
-    : muted
-      ? "var(--color-faint)"
-      : "var(--color-ink)",
-  boxShadow: active ? "none" : "0 1px 3px rgba(0,0,0,.05)",
-});
+import { IconPackage } from "@tabler/icons-react";
 
 export default async function ListingsPage() {
-  const real = await getUserListings();
-  const rows = real.length ? real : listings;
+  const rows = await getUserListings();
+  const active = rows.filter((l) => l.status === "active").length;
+  const sold = rows.filter((l) => l.status === "sold").length;
+  const netProfit = rows
+    .filter((l) => l.status === "sold")
+    .reduce((s, l) => s + (l.netProfit ?? 0), 0);
+
   return (
     <main className="page">
       <AppHeader tagline="Active listings" nav={buildNav("/listings")} />
 
-      <div style={{ marginTop: 20 }}>
-        <StatsRow summary={dashboardSummary} />
-      </div>
-
-      <FilterChips />
-
-      <ListingsTable listings={rows} />
-
-      <div
-        style={{
-          marginTop: 16,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <span style={{ fontSize: 12, color: "var(--color-faint)" }}>
-          Showing 1–8 of 47
-        </span>
-        <div style={{ display: "flex", gap: 6 }}>
-          <span style={pageBtn(false, true)}>‹ prev</span>
-          <span style={pageBtn(true)}>1</span>
-          <span style={pageBtn()}>2</span>
-          <span style={pageBtn()}>3</span>
-          <span style={pageBtn()}>next ›</span>
+      {rows.length === 0 ? (
+        <div
+          style={{
+            marginTop: 20,
+            padding: "48px 24px",
+            textAlign: "center",
+            background: "var(--color-surface)",
+            borderRadius: 16,
+            boxShadow: "0 1px 3px rgba(0,0,0,.05)",
+          }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 48,
+              height: 48,
+              borderRadius: 12,
+              background: "var(--color-go-soft)",
+              color: "var(--color-flip)",
+              marginBottom: 14,
+            }}
+          >
+            <IconPackage size={24} />
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>No listings yet</div>
+          <div
+            style={{
+              fontSize: 13,
+              color: "var(--color-muted)",
+              marginTop: 6,
+              maxWidth: 360,
+              marginLeft: "auto",
+              marginRight: "auto",
+              lineHeight: 1.5,
+            }}
+          >
+            Scan a product, then hit <b>Build listing</b> to save your first
+            one. It&apos;ll show up here.
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div style={{ marginTop: 20 }}>
+            <StatsRow
+              active={active}
+              sold={sold}
+              netProfit={netProfit}
+              total={rows.length}
+            />
+          </div>
+
+          <div style={{ marginTop: 18 }}>
+            <ListingsTable listings={rows} />
+          </div>
+
+          <div
+            style={{ marginTop: 16, fontSize: 12, color: "var(--color-faint)" }}
+          >
+            Showing {rows.length} listing{rows.length === 1 ? "" : "s"}
+          </div>
+        </>
+      )}
     </main>
   );
 }

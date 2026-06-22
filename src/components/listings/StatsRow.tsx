@@ -1,49 +1,33 @@
 import { StatCard } from "@/components/flip/StatCard";
-import type { DashboardSummary } from "@/lib/listingsData";
-import {
-  IconBox,
-  IconCoin,
-  IconWallet,
-  IconClockHour4,
-  IconAlertTriangle,
-} from "@tabler/icons-react";
+import { IconBox, IconCoin, IconWallet, IconList } from "@tabler/icons-react";
 
-export function StatsRow({ summary }: { summary: DashboardSummary }) {
+export function StatsRow({
+  active,
+  sold,
+  netProfit,
+  total,
+}: {
+  active: number;
+  sold: number;
+  netProfit: number;
+  total: number;
+}) {
   return (
-    <div className="grid-stats-5">
-      <StatCard
-        icon={<IconBox size={16} />}
-        label="Active"
-        value={summary.active}
-        sublabel={summary.activeDelta}
-      />
+    <div className="grid-stats-4">
+      <StatCard icon={<IconBox size={16} />} label="Active" value={active} />
       <StatCard
         icon={<IconCoin size={16} />}
-        label="Sold today"
-        value={summary.soldToday}
-        sublabel={`+$${summary.netToday.toFixed(2)} net`}
-        sublabelColor="var(--color-flip)"
+        label="Sold"
+        value={sold}
+        accent="var(--color-flip)"
       />
       <StatCard
         icon={<IconWallet size={16} />}
-        label="Profit MTD"
-        value={`$${summary.profitMTD}`}
-        sublabel="22-day window"
+        label="Net profit (sold)"
+        value={`$${netProfit.toFixed(2)}`}
+        sublabelColor="var(--color-flip)"
       />
-      <StatCard
-        icon={<IconClockHour4 size={16} />}
-        label="Avg days to sell"
-        value={summary.avgDaysToSell}
-        sublabel="target ≤ 4"
-      />
-      <StatCard
-        icon={<IconAlertTriangle size={16} />}
-        label="Needs attention"
-        value={summary.alerts}
-        sublabel="price jumps · OOS"
-        accent="var(--color-cost)"
-        sublabelColor="var(--color-cost)"
-      />
+      <StatCard icon={<IconList size={16} />} label="Total listings" value={total} />
     </div>
   );
 }

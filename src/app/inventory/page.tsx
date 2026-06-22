@@ -245,6 +245,20 @@ export default function InventoryPage() {
     <main className="page">
       <AppHeader tagline="Inventory monitor" nav={buildNav("/inventory")} />
 
+      <div
+        style={{
+          marginTop: 16,
+          padding: "10px 14px",
+          background: "var(--color-amber-soft)",
+          color: "var(--color-amber-ink)",
+          borderRadius: 12,
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        Sample data — the live monitor isn&apos;t running yet.
+      </div>
+
       <div className="grid-stats-4" style={{ marginTop: 20 }}>
         <StatCard
           icon={<IconBell size={16} />}
