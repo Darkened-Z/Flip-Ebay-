@@ -11,6 +11,7 @@ import {
   IconCircleCheck,
   IconArrowRight,
   IconCalendarEvent,
+  IconDownload,
 } from "@tabler/icons-react";
 
 const chip: React.CSSProperties = {
@@ -23,6 +24,44 @@ const chip: React.CSSProperties = {
   color: "var(--color-ink)",
   cursor: "pointer",
 };
+
+function exportCsv(rows: Candidate[]) {
+  const headers = [
+    "Title",
+    "ASIN",
+    "Amazon URL",
+    "Amazon Price",
+    "eBay Median",
+    "Sold (30d)",
+    "Net Profit",
+    "Margin %",
+    "Worth Listing",
+  ];
+  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const lines = [headers.join(",")];
+  for (const c of rows) {
+    lines.push(
+      [
+        esc(c.title),
+        c.asin,
+        esc(c.link),
+        c.amazonPrice.toFixed(2),
+        c.ebayMedian.toFixed(2),
+        c.soldCount,
+        c.net.toFixed(2),
+        c.marginPct,
+        c.worth ? "yes" : "no",
+      ].join(","),
+    );
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `flip-finds-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function DiscoverClient({
   seasonal,
@@ -235,14 +274,51 @@ export function DiscoverClient({
           Scanning products against eBay sold comps…
         </div>
       ) : candidates && candidates.length ? (
-        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-          {candidates.map((c) => (
-            <CandidateRow
-              key={c.asin}
-              c={c}
-              onScan={() => router.push(`/?url=${encodeURIComponent(c.link)}`)}
-            />
-          ))}
+        <div style={{ marginTop: 16 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-muted)" }}>
+              {candidates.length} products ·{" "}
+              <span style={{ color: "var(--color-flip)" }}>
+                {candidates.filter((c) => c.worth).length} worth listing
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => exportCsv(candidates)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                background: "var(--color-surface)",
+                color: "var(--color-ink)",
+                border: "1px solid var(--color-line)",
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: "0 1px 3px rgba(0,0,0,.05)",
+              }}
+            >
+              <IconDownload size={15} /> Export CSV
+            </button>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {candidates.map((c) => (
+              <CandidateRow
+                key={c.asin}
+                c={c}
+                onScan={() => router.push(`/?url=${encodeURIComponent(c.link)}`)}
+              />
+            ))}
+          </div>
         </div>
       ) : candidates ? (
         <div
