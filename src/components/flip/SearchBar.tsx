@@ -3,8 +3,20 @@
 import { useState } from "react";
 import { IconSearch, IconBolt } from "@tabler/icons-react";
 
-export function SearchBar({ defaultValue = "" }: { defaultValue?: string }) {
+export function SearchBar({
+  defaultValue = "",
+  onScan,
+  pending = false,
+}: {
+  defaultValue?: string;
+  onScan?: (url: string) => void;
+  pending?: boolean;
+}) {
   const [value, setValue] = useState(defaultValue);
+
+  function go() {
+    if (!pending) onScan?.(value);
+  }
 
   return (
     <div
@@ -22,6 +34,9 @@ export function SearchBar({ defaultValue = "" }: { defaultValue?: string }) {
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") go();
+        }}
         placeholder="Paste an Amazon or Sam's Club URL"
         style={{
           flex: 1,
@@ -35,6 +50,8 @@ export function SearchBar({ defaultValue = "" }: { defaultValue?: string }) {
       />
       <button
         type="button"
+        onClick={go}
+        disabled={pending}
         style={{
           padding: "12px 24px",
           background: "var(--color-flip)",
@@ -44,14 +61,14 @@ export function SearchBar({ defaultValue = "" }: { defaultValue?: string }) {
           fontFamily: "var(--font-sans)",
           fontSize: 14,
           fontWeight: 700,
-          cursor: "pointer",
+          cursor: pending ? "default" : "pointer",
+          opacity: pending ? 0.7 : 1,
           display: "flex",
           alignItems: "center",
           gap: 7,
-          boxShadow: "0 4px 12px -2px rgba(15,122,67,.45)",
         }}
       >
-        Scan <IconBolt size={16} stroke={2} />
+        {pending ? "Scanning…" : <>Scan <IconBolt size={16} stroke={2} /></>}
       </button>
     </div>
   );
