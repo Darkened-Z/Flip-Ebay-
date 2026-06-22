@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { SearchBar } from "@/components/flip/SearchBar";
 import { ScanResultView } from "@/components/scanner/ScanResultView";
@@ -9,7 +9,13 @@ import { createDraftFromScan } from "@/app/builder/actions";
 import type { ScanResult } from "@/lib/mockData";
 import { IconAlertTriangle } from "@tabler/icons-react";
 
-export function ScannerClient({ initial }: { initial: ScanResult }) {
+export function ScannerClient({
+  initial,
+  initialUrl,
+}: {
+  initial: ScanResult;
+  initialUrl?: string;
+}) {
   const router = useRouter();
   const [result, setResult] = useState<ScanResult | null>(initial);
   const [pending, setPending] = useState(false);
@@ -27,6 +33,14 @@ export function ScannerClient({ initial }: { initial: ScanResult }) {
     }
     setResult(res);
   }
+
+  useEffect(() => {
+    if (initialUrl) {
+      void handleScan(initialUrl);
+    }
+    // run once on mount for a ?url= deep link from Discover
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleBuild() {
     if (!result) return;
