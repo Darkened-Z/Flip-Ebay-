@@ -33,7 +33,7 @@ function exportCsv(rows: Candidate[]) {
     "ASIN",
     "Amazon URL",
     "Amazon Price",
-    "eBay Median",
+    "eBay Price",
     "Sold (30d)",
     "Net Profit",
     "Margin %",
@@ -49,7 +49,7 @@ function exportCsv(rows: Candidate[]) {
         c.asin,
         esc(c.link),
         c.amazonPrice.toFixed(2),
-        c.ebayMedian.toFixed(2),
+        c.ebayPrice.toFixed(2),
         c.soldCount,
         c.net.toFixed(2),
         c.marginPct,
@@ -468,7 +468,7 @@ function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
               color: "var(--color-muted)",
             }}
           >
-            Amazon ${c.amazonPrice.toFixed(2)} · eBay ${c.ebayMedian.toFixed(2)} · {c.soldCount} sold
+            Amazon ${c.amazonPrice.toFixed(2)} · eBay ${c.ebayPrice.toFixed(2)} · {c.soldCount} sold
           </span>
           {c.isPrime ? (
             <span

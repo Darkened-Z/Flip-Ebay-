@@ -1,3 +1,5 @@
+import { quickSalePrice } from "./pricing";
+
 // One product surfaced by an auto-sourcing search.
 export type Candidate = {
   asin: string;
@@ -5,7 +7,7 @@ export type Candidate = {
   image: string | null;
   link: string;
   amazonPrice: number;
-  ebayMedian: number;
+  ebayPrice: number; // quick-sale price (low end of sold comps), not median
   soldCount: number;
   net: number;
   marginPct: number;
@@ -34,12 +36,6 @@ async function getJson(url: string): Promise<Record<string, unknown>> {
   const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return (await r.json()) as Record<string, unknown>;
-}
-function median(a: number[]): number {
-  if (!a.length) return 0;
-  const s = [...a].sort((x, y) => x - y);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -72,7 +68,7 @@ function keys(): { rfKey?: string; seKey?: string } {
 async function ebaySold(
   query: string,
   seKey: string,
-): Promise<{ median: number; soldCount: number }> {
+): Promise<{ price: number; soldCount: number }> {
   try {
     const e = await getJson(
       `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete&api_key=${seKey}`,
@@ -80,9 +76,9 @@ async function ebaySold(
     const prices = ((e.organic_results as { price?: { extracted?: number } }[]) ?? [])
       .map((x) => x.price?.extracted)
       .filter((p): p is number => typeof p === "number" && p > 0);
-    return { median: round2(median(prices)), soldCount: prices.length };
+    return { price: quickSalePrice(prices), soldCount: prices.length };
   } catch {
-    return { median: 0, soldCount: 0 };
+    return { price: 0, soldCount: 0 };
   }
 }
 
@@ -122,19 +118,22 @@ export async function searchCandidates(
       const amazonPrice = r.price?.value;
       if (!asin || !title || typeof amazonPrice !== "number") return null;
 
-      const { median: med, soldCount } = await ebaySold(cleanQuery(title), seKey);
-      const fees = round2(med * 0.13);
-      const net = round2(med - amazonPrice - fees);
+      const { price: ebayPrice, soldCount } = await ebaySold(
+        cleanQuery(title),
+        seKey,
+      );
+      const fees = round2(ebayPrice * 0.13);
+      const net = round2(ebayPrice - amazonPrice - fees);
       return {
         asin,
         title,
         image: r.image ?? null,
         link: r.link ?? `amazon.com/dp/${asin}`,
         amazonPrice: round2(amazonPrice),
-        ebayMedian: med,
+        ebayPrice,
         soldCount,
         net,
-        marginPct: med > 0 ? Math.round((net / med) * 100) : 0,
+        marginPct: ebayPrice > 0 ? Math.round((net / ebayPrice) * 100) : 0,
         isPrime: !!r.is_prime,
         worth: net >= 5 && soldCount >= 3,
       };
@@ -150,9 +149,9 @@ function mockCandidates(term: string, limit: number): Candidate[] {
   return Array.from({ length: limit })
     .map((_, i) => {
       const amazonPrice = round2(12 + i * 3.5);
-      const ebayMedian = round2(amazonPrice + 14 - i * 2);
-      const fees = round2(ebayMedian * 0.13);
-      const net = round2(ebayMedian - amazonPrice - fees);
+      const ebayPrice = round2(amazonPrice + 14 - i * 2);
+      const fees = round2(ebayPrice * 0.13);
+      const net = round2(ebayPrice - amazonPrice - fees);
       const soldCount = 14 - i;
       return {
         asin: `B0MOCK${String(i).padStart(4, "0")}`,
@@ -160,10 +159,10 @@ function mockCandidates(term: string, limit: number): Candidate[] {
         image: null,
         link: "amazon.com/dp/B0MOCK" + String(i).padStart(4, "0"),
         amazonPrice,
-        ebayMedian,
+        ebayPrice,
         soldCount,
         net,
-        marginPct: ebayMedian > 0 ? Math.round((net / ebayMedian) * 100) : 0,
+        marginPct: ebayPrice > 0 ? Math.round((net / ebayPrice) * 100) : 0,
         isPrime: true,
         worth: net >= 5 && soldCount >= 3,
       };

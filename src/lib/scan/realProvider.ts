@@ -1,6 +1,7 @@
 import type { ScanResult } from "@/lib/mockData";
 import { mockScan } from "@/lib/mockData";
 import { parseSource, type ScanProvider } from "./mockProvider";
+import { quickSalePrice } from "./pricing";
 
 // Real provider: Amazon product data via Rainforest API, eBay sold + active
 // comps via SerpApi's eBay engine. Activated when both API keys are set.
@@ -164,7 +165,10 @@ export class RainforestSerpApiProvider implements ScanProvider {
               : 1;
 
     // --- pricing + verdict ---
-    const list = med > 0 ? med : mockScan.pricing.list;
+    // List at the quick-sale price (low end of sold comps) to sell fast;
+    // med (the true median) is still shown as a sold-history stat.
+    const qsp = quickSalePrice(prices);
+    const list = qsp > 0 ? qsp : med > 0 ? med : mockScan.pricing.list;
     const fees = round2(list * 0.13);
     const shipping = 0;
     const tax = 0;
