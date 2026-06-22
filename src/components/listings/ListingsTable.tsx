@@ -1,6 +1,7 @@
 import { StatusPill } from "@/components/brand";
 import { ProductGlyph } from "@/components/scanner/ProductGlyph";
 import type { Listing, ListingStatus, ListingTone } from "@/lib/listingsData";
+import { markSold } from "@/app/orders/actions";
 
 const ROW_TINT: Record<ListingTone, string> = {
   default: "transparent",
@@ -55,9 +56,8 @@ export function ListingsTable({ listings }: { listings: Listing[] }) {
             <th style={{ ...th, width: 52, textAlign: "right" }}>AGE</th>
             <th style={{ ...th, width: 58, textAlign: "right" }}>VIEWS</th>
             <th style={{ ...th, width: 66, textAlign: "right" }}>LIST</th>
-            <th style={{ ...th, width: 66, textAlign: "right", paddingRight: 0 }}>
-              NET
-            </th>
+            <th style={{ ...th, width: 66, textAlign: "right" }}>NET</th>
+            <th style={{ ...th, width: 96, paddingRight: 0 }} />
           </tr>
         </thead>
         <tbody>
@@ -142,6 +142,29 @@ export function ListingsTable({ listings }: { listings: Listing[] }) {
                 }}
               >
                 {l.netProfit === null ? "—" : `$${l.netProfit.toFixed(2)}`}
+              </td>
+              <td style={{ padding: "10px 0 10px 8px", textAlign: "right" }}>
+                {l.status === "active" ? (
+                  <form action={markSold}>
+                    <input type="hidden" name="id" value={l.id} />
+                    <button
+                      type="submit"
+                      style={{
+                        padding: "7px 12px",
+                        background: "var(--color-surface)",
+                        color: "var(--color-ink)",
+                        border: "1px solid var(--color-line)",
+                        borderRadius: 9,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Mark sold
+                    </button>
+                  </form>
+                ) : null}
               </td>
             </tr>
           ))}
