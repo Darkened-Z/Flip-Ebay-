@@ -4,27 +4,53 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { discoverAction } from "@/app/discover/actions";
 import type { Candidate } from "@/lib/scan/discover";
-import { IconSearch, IconBolt, IconCircleCheck, IconArrowRight } from "@tabler/icons-react";
+import type { SeasonalSuggestion } from "@/lib/sourcing/seasonal";
+import {
+  IconSearch,
+  IconBolt,
+  IconCircleCheck,
+  IconArrowRight,
+  IconCalendarEvent,
+} from "@tabler/icons-react";
 
-export function DiscoverClient() {
+const chip: React.CSSProperties = {
+  padding: "6px 11px",
+  background: "var(--color-surface)",
+  border: "1px solid var(--color-line)",
+  borderRadius: 9,
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--color-ink)",
+  cursor: "pointer",
+};
+
+export function DiscoverClient({
+  seasonal,
+}: {
+  seasonal: SeasonalSuggestion[];
+}) {
   const router = useRouter();
   const [term, setTerm] = useState("");
   const [limit, setLimit] = useState(8);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
+  const [related, setRelated] = useState<string[]>([]);
 
-  async function run() {
-    if (pending) return;
+  async function run(override?: string) {
+    const q = (override ?? term).trim();
+    if (!q || pending) return;
+    if (override) setTerm(override);
     setPending(true);
     setError(null);
-    const res = await discoverAction(term, limit);
+    const res = await discoverAction(q, limit);
     setPending(false);
     if ("error" in res) {
       setError(res.error);
       return;
     }
     setCandidates(res.candidates);
+    setRelated(res.related);
   }
 
   return (
@@ -78,7 +104,7 @@ export function DiscoverClient() {
         </select>
         <button
           type="button"
-          onClick={run}
+          onClick={() => run()}
           disabled={pending}
           style={{
             padding: "12px 22px",
@@ -100,16 +126,59 @@ export function DiscoverClient() {
         </button>
       </div>
 
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: 12,
-          color: "var(--color-faint)",
-        }}
-      >
-        Checks each product against eBay sold comps. Uses ~1 + N API lookups per
-        search.
+      <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-faint)" }}>
+        Ranked by eBay demand (sell velocity) × profit. Uses ~2 + N API lookups
+        per search.
       </div>
+
+      {/* Seasonal seeds */}
+      {seasonal.length ? (
+        <div
+          style={{
+            marginTop: 16,
+            background: "var(--color-surface)",
+            borderRadius: 14,
+            padding: 14,
+            boxShadow: "0 1px 3px rgba(0,0,0,.05)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              fontSize: 12,
+              fontWeight: 700,
+              color: "var(--color-muted)",
+            }}
+          >
+            <IconCalendarEvent size={15} color="var(--color-flip)" /> Coming up — source ahead of demand
+          </div>
+          {seasonal.slice(0, 2).map((s) => (
+            <div key={s.event} style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  marginBottom: 6,
+                }}
+              >
+                {s.event}{" "}
+                <span style={{ color: "var(--color-faint)", fontWeight: 600 }}>
+                  · in {s.daysAway} day{s.daysAway === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                {s.terms.map((t) => (
+                  <button key={t} type="button" style={chip} onClick={() => run(t)}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {error ? (
         <div
@@ -124,6 +193,29 @@ export function DiscoverClient() {
           }}
         >
           {error}
+        </div>
+      ) : null}
+
+      {/* Related searches (eBay demand expansion) */}
+      {related.length ? (
+        <div style={{ marginTop: 16 }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: "var(--color-muted)",
+              marginBottom: 8,
+            }}
+          >
+            Buyers also search on eBay
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {related.map((r) => (
+              <button key={r} type="button" style={chip} onClick={() => run(r)}>
+                {r}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
 
@@ -143,9 +235,13 @@ export function DiscoverClient() {
           Scanning products against eBay sold comps…
         </div>
       ) : candidates && candidates.length ? (
-        <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           {candidates.map((c) => (
-            <CandidateRow key={c.asin} c={c} onScan={() => router.push(`/?url=${encodeURIComponent(c.link)}`)} />
+            <CandidateRow
+              key={c.asin}
+              c={c}
+              onScan={() => router.push(`/?url=${encodeURIComponent(c.link)}`)}
+            />
           ))}
         </div>
       ) : candidates ? (
@@ -162,28 +258,18 @@ export function DiscoverClient() {
         >
           No products found for that search. Try different words.
         </div>
-      ) : (
-        <div
-          style={{
-            marginTop: 18,
-            padding: 48,
-            textAlign: "center",
-            background: "var(--color-surface)",
-            borderRadius: 16,
-            boxShadow: "0 1px 3px rgba(0,0,0,.05)",
-            color: "var(--color-faint)",
-            fontSize: 14,
-          }}
-        >
-          Search a product or category and FLIP will surface the profitable ones.
-        </div>
-      )}
+      ) : null}
     </>
   );
 }
 
 function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
-  const netColor = c.net >= 5 ? "var(--color-flip)" : c.net > 0 ? "var(--color-amber-ink)" : "var(--color-cost)";
+  const netColor =
+    c.net >= 5
+      ? "var(--color-flip)"
+      : c.net > 0
+        ? "var(--color-amber-ink)"
+        : "var(--color-cost)";
   return (
     <div
       style={{
@@ -251,7 +337,14 @@ function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
         <div style={{ fontSize: 11, color: "var(--color-muted)", fontWeight: 600 }}>
           Net
         </div>
-        <div style={{ fontSize: 20, fontWeight: 800, color: netColor, letterSpacing: "-0.02em" }}>
+        <div
+          style={{
+            fontSize: 20,
+            fontWeight: 800,
+            color: netColor,
+            letterSpacing: "-0.02em",
+          }}
+        >
           ${c.net.toFixed(2)}
         </div>
       </div>

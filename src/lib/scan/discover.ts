@@ -12,6 +12,11 @@ export type Candidate = {
   worth: boolean;
 };
 
+export type DiscoverOutput = {
+  candidates: Candidate[];
+  related: string[];
+};
+
 const RAINFOREST = "https://api.rainforestapi.com/request";
 const SERPAPI = "https://serpapi.com/search";
 
@@ -36,35 +41,85 @@ function median(a: number[]): number {
 }
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-function mockCandidates(term: string, limit: number): Candidate[] {
-  return Array.from({ length: limit }).map((_, i) => {
-    const amazonPrice = round2(12 + i * 3.5);
-    const ebayMedian = round2(amazonPrice + 14 - i * 2);
-    const fees = round2(ebayMedian * 0.13);
-    const net = round2(ebayMedian - amazonPrice - fees);
-    return {
-      asin: `B0MOCK${String(i).padStart(4, "0")}`,
-      title: `${term} — sample product ${i + 1}`,
-      image: null,
-      link: "amazon.com/dp/B0MOCK" + String(i).padStart(4, "0"),
-      amazonPrice,
-      ebayMedian,
-      soldCount: 12 - i,
-      net,
-      marginPct: ebayMedian > 0 ? Math.round((net / ebayMedian) * 100) : 0,
-      worth: net >= 5,
-    };
-  }).sort((a, b) => b.net - a.net);
+// Demand-weighted score: profit, amplified by eBay sales velocity (capped).
+function demandScore(net: number, soldCount: number): number {
+  return net * (1 + Math.min(soldCount, 20) / 5);
 }
 
-export async function discover(term: string, limit: number): Promise<Candidate[]> {
+async function ebaySold(
+  query: string,
+  seKey: string,
+): Promise<{ median: number; soldCount: number }> {
+  try {
+    const e = await getJson(
+      `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete&api_key=${seKey}`,
+    );
+    const prices = ((e.organic_results as { price?: { extracted?: number } }[]) ?? [])
+      .map((x) => x.price?.extracted)
+      .filter((p): p is number => typeof p === "number" && p > 0);
+    return { median: round2(median(prices)), soldCount: prices.length };
+  } catch {
+    return { median: 0, soldCount: 0 };
+  }
+}
+
+async function ebayRelated(query: string, seKey: string): Promise<string[]> {
+  try {
+    const e = await getJson(
+      `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete&api_key=${seKey}`,
+    );
+    const rs = (e.related_searches as { query?: string }[]) ?? [];
+    return rs
+      .map((r) => r.query)
+      .filter((q): q is string => typeof q === "string" && q.length > 0)
+      .slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
+function mockCandidates(term: string, limit: number): Candidate[] {
+  return Array.from({ length: limit })
+    .map((_, i) => {
+      const amazonPrice = round2(12 + i * 3.5);
+      const ebayMedian = round2(amazonPrice + 14 - i * 2);
+      const fees = round2(ebayMedian * 0.13);
+      const net = round2(ebayMedian - amazonPrice - fees);
+      const soldCount = 14 - i;
+      return {
+        asin: `B0MOCK${String(i).padStart(4, "0")}`,
+        title: `${term} — sample product ${i + 1}`,
+        image: null,
+        link: "amazon.com/dp/B0MOCK" + String(i).padStart(4, "0"),
+        amazonPrice,
+        ebayMedian,
+        soldCount,
+        net,
+        marginPct: ebayMedian > 0 ? Math.round((net / ebayMedian) * 100) : 0,
+        worth: net >= 5 && soldCount >= 3,
+      };
+    })
+    .sort((a, b) => demandScore(b.net, b.soldCount) - demandScore(a.net, a.soldCount));
+}
+
+export async function discover(
+  term: string,
+  limit: number,
+): Promise<DiscoverOutput> {
   const rfKey = process.env.RAINFOREST_API_KEY;
   const seKey = process.env.SERPAPI_KEY;
-  if (!rfKey || !seKey) return mockCandidates(term, limit);
+  if (!rfKey || !seKey) {
+    return { candidates: mockCandidates(term, limit), related: [] };
+  }
 
-  const search = await getJson(
-    `${RAINFOREST}?api_key=${rfKey}&type=search&amazon_domain=amazon.com&search_term=${encodeURIComponent(term)}`,
-  );
+  // Amazon search (supply) + eBay related searches (demand expansion), in parallel.
+  const [search, related] = await Promise.all([
+    getJson(
+      `${RAINFOREST}?api_key=${rfKey}&type=search&amazon_domain=amazon.com&search_term=${encodeURIComponent(term)}`,
+    ),
+    ebayRelated(term, seKey),
+  ]);
+
   const rows = ((search.search_results as SearchRow[]) ?? []).slice(0, limit);
 
   const candidates = await Promise.all(
@@ -74,21 +129,7 @@ export async function discover(term: string, limit: number): Promise<Candidate[]
       const amazonPrice = r.price?.value;
       if (!asin || !title || typeof amazonPrice !== "number") return null;
 
-      let med = 0;
-      let soldCount = 0;
-      try {
-        const e = await getJson(
-          `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(title)}&show_only=Sold,Complete&api_key=${seKey}`,
-        );
-        const prices = ((e.organic_results as { price?: { extracted?: number } }[]) ?? [])
-          .map((x) => x.price?.extracted)
-          .filter((p): p is number => typeof p === "number" && p > 0);
-        med = round2(median(prices));
-        soldCount = prices.length;
-      } catch {
-        // skip eBay errors for this candidate
-      }
-
+      const { median: med, soldCount } = await ebaySold(title, seKey);
       const fees = round2(med * 0.13);
       const net = round2(med - amazonPrice - fees);
       return {
@@ -101,12 +142,17 @@ export async function discover(term: string, limit: number): Promise<Candidate[]
         soldCount,
         net,
         marginPct: med > 0 ? Math.round((net / med) * 100) : 0,
-        worth: net >= 5 && soldCount > 0,
+        worth: net >= 5 && soldCount >= 3,
       };
     }),
   );
 
-  return candidates
+  const ranked = candidates
     .filter((c): c is Candidate => c !== null)
-    .sort((a, b) => b.net - a.net);
+    .sort(
+      (a, b) =>
+        demandScore(b.net, b.soldCount) - demandScore(a.net, a.soldCount),
+    );
+
+  return { candidates: ranked, related };
 }
