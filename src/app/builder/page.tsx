@@ -3,6 +3,8 @@ import { ProductGlyph } from "@/components/scanner/ProductGlyph";
 import { TitleField } from "@/components/builder/TitleField";
 import { builderData } from "@/lib/builderData";
 import { buildNav } from "@/lib/nav";
+import { createClient } from "@/lib/supabase/server";
+import { publishListing } from "@/app/builder/actions";
 import {
   IconCircleCheck,
   IconPlus,
@@ -161,8 +163,43 @@ function SetupLine({ k, v }: { k: string; v: string }) {
   );
 }
 
-export default function BuilderPage() {
+export default async function BuilderPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
   const d = builderData;
+  const { id } = await searchParams;
+  let anchor = d.anchor;
+  let listingId = "";
+
+  if (id) {
+    try {
+      const supabase = await createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from("listings")
+          .select("id,title,source_cost,list_price,net_profit")
+          .eq("id", id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (data) {
+          listingId = data.id as string;
+          anchor = {
+            title: (data.title as string) ?? d.anchor.title,
+            sourcePrice: Number(data.source_cost ?? d.anchor.sourcePrice),
+            listPrice: Number(data.list_price ?? d.anchor.listPrice),
+            estNet: Number(data.net_profit ?? d.anchor.estNet),
+          };
+        }
+      }
+    } catch {
+      // fall back to stub anchor
+    }
+  }
 
   return (
     <main className="page">
@@ -181,7 +218,7 @@ export default function BuilderPage() {
       >
         <ProductGlyph size={54} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>{d.anchor.title}</div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>{anchor.title}</div>
           <div
             style={{
               fontFamily: "var(--font-mono)",
@@ -190,8 +227,8 @@ export default function BuilderPage() {
               marginTop: 3,
             }}
           >
-            ${d.anchor.sourcePrice.toFixed(2)} source → $
-            {d.anchor.listPrice.toFixed(2)} list · est. ${d.anchor.estNet.toFixed(2)}{" "}
+            ${anchor.sourcePrice.toFixed(2)} source → $
+            {anchor.listPrice.toFixed(2)} list · est. ${anchor.estNet.toFixed(2)}{" "}
             net
           </div>
         </div>
@@ -441,9 +478,12 @@ export default function BuilderPage() {
 
       {/* 6) Action bar */}
       <div className="btn-row" style={{ marginTop: 18 }}>
-        <button type="button" style={primaryBtn}>
-          Publish to eBay <IconArrowRight size={17} />
-        </button>
+        <form action={publishListing} style={{ display: "contents" }}>
+          <input type="hidden" name="id" value={listingId} />
+          <button type="submit" style={primaryBtn}>
+            Publish to eBay <IconArrowRight size={17} />
+          </button>
+        </form>
         <button type="button" style={ghostBtn}>
           Save draft
         </button>

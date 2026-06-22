@@ -3,6 +3,7 @@ import { StatsRow } from "@/components/listings/StatsRow";
 import { FilterChips } from "@/components/listings/FilterChips";
 import { ListingsTable } from "@/components/listings/ListingsTable";
 import { dashboardSummary, listings } from "@/lib/listingsData";
+import { getUserListings } from "@/lib/data/listings";
 import { buildNav } from "@/lib/nav";
 
 const pageBtn = (active?: boolean, muted?: boolean): React.CSSProperties => ({
@@ -20,7 +21,9 @@ const pageBtn = (active?: boolean, muted?: boolean): React.CSSProperties => ({
   boxShadow: active ? "none" : "0 1px 3px rgba(0,0,0,.05)",
 });
 
-export default function ListingsPage() {
+export default async function ListingsPage() {
+  const real = await getUserListings();
+  const rows = real.length ? real : listings;
   return (
     <main className="page">
       <AppHeader tagline="Active listings" nav={buildNav("/listings")} />
@@ -31,7 +34,7 @@ export default function ListingsPage() {
 
       <FilterChips />
 
-      <ListingsTable listings={listings} />
+      <ListingsTable listings={rows} />
 
       <div
         style={{

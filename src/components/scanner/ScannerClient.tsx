@@ -1,15 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { SearchBar } from "@/components/flip/SearchBar";
 import { ScanResultView } from "@/components/scanner/ScanResultView";
 import { runScanAction } from "@/app/scan/actions";
+import { createDraftFromScan } from "@/app/builder/actions";
 import type { ScanResult } from "@/lib/mockData";
 import { IconAlertTriangle } from "@tabler/icons-react";
 
 export function ScannerClient({ initial }: { initial: ScanResult }) {
+  const router = useRouter();
   const [result, setResult] = useState<ScanResult | null>(initial);
   const [pending, setPending] = useState(false);
+  const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleScan(url: string) {
@@ -22,6 +26,19 @@ export function ScannerClient({ initial }: { initial: ScanResult }) {
       return;
     }
     setResult(res);
+  }
+
+  async function handleBuild() {
+    if (!result) return;
+    setBuilding(true);
+    setError(null);
+    const res = await createDraftFromScan(result);
+    setBuilding(false);
+    if ("id" in res) {
+      router.push(`/builder?id=${res.id}`);
+    } else {
+      setError(res.error);
+    }
   }
 
   return (
@@ -70,7 +87,11 @@ export function ScannerClient({ initial }: { initial: ScanResult }) {
           Scanning…
         </div>
       ) : result ? (
-        <ScanResultView result={result} />
+        <ScanResultView
+          result={result}
+          onBuild={handleBuild}
+          building={building}
+        />
       ) : (
         <div
           style={{

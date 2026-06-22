@@ -127,7 +127,15 @@ function Chk({ icon, label }: { icon: React.ReactNode; label: string }) {
   );
 }
 
-export function ScanResultView({ result }: { result: ScanResult }) {
+export function ScanResultView({
+  result,
+  onBuild,
+  building,
+}: {
+  result: ScanResult;
+  onBuild?: () => void;
+  building?: boolean;
+}) {
   const s = result;
   const todayIndex = s.velocity.bars.length - 4;
   const worth = s.verdict.label === "Worth listing";
@@ -393,8 +401,19 @@ export function ScanResultView({ result }: { result: ScanResult }) {
       </div>
 
       <div className="btn-row" style={{ marginTop: 18 }}>
-        <button type="button" style={primaryBtn}>
-          Build listing <IconArrowRight size={17} />
+        <button
+          type="button"
+          style={{ ...primaryBtn, opacity: building ? 0.7 : 1 }}
+          onClick={onBuild}
+          disabled={building}
+        >
+          {building ? (
+            "Building…"
+          ) : (
+            <>
+              Build listing <IconArrowRight size={17} />
+            </>
+          )}
         </button>
         <button type="button" style={ghostBtn}>
           Save for later
