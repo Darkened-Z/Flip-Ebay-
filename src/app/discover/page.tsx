@@ -7,7 +7,7 @@ export default function DiscoverPage() {
   const seasonal = getSeasonalSuggestions();
   return (
     <main className="page">
-      <AppHeader tagline="Auto-sourcing" nav={buildNav("/discover")} />
+      <AppHeader tagline="Product hunt" nav={buildNav("/discover")} />
       <DiscoverClient seasonal={seasonal} />
     </main>
   );

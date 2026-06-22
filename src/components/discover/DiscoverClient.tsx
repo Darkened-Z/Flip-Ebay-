@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { discoverAction } from "@/app/discover/actions";
+import { discoverAction, huntAction } from "@/app/discover/actions";
 import type { Candidate } from "@/lib/scan/discover";
 import type { SeasonalSuggestion } from "@/lib/sourcing/seasonal";
 import {
@@ -12,6 +12,8 @@ import {
   IconArrowRight,
   IconCalendarEvent,
   IconDownload,
+  IconExternalLink,
+  IconRadar2,
 } from "@tabler/icons-react";
 
 const chip: React.CSSProperties = {
@@ -35,6 +37,7 @@ function exportCsv(rows: Candidate[]) {
     "Sold (30d)",
     "Net Profit",
     "Margin %",
+    "Prime",
     "Worth Listing",
   ];
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
@@ -50,6 +53,7 @@ function exportCsv(rows: Candidate[]) {
         c.soldCount,
         c.net.toFixed(2),
         c.marginPct,
+        c.isPrime ? "yes" : "no",
         c.worth ? "yes" : "no",
       ].join(","),
     );
@@ -70,11 +74,30 @@ export function DiscoverClient({
 }) {
   const router = useRouter();
   const [term, setTerm] = useState("");
-  const [limit, setLimit] = useState(8);
+  const [categories, setCategories] = useState(4);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [related, setRelated] = useState<string[]>([]);
+  const [info, setInfo] = useState<string | null>(null);
+
+  async function hunt() {
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    setRelated([]);
+    setInfo(null);
+    const res = await huntAction(categories);
+    setPending(false);
+    if ("error" in res) {
+      setError(res.error);
+      return;
+    }
+    setCandidates(res.winners);
+    setInfo(
+      `Found ${res.winners.length} winner${res.winners.length === 1 ? "" : "s"} from ${res.scanned} products across ${res.seeds.length} categories: ${res.seeds.join(", ")}`,
+    );
+  }
 
   async function run(override?: string) {
     const q = (override ?? term).trim();
@@ -82,7 +105,8 @@ export function DiscoverClient({
     if (override) setTerm(override);
     setPending(true);
     setError(null);
-    const res = await discoverAction(q, limit);
+    setInfo(null);
+    const res = await discoverAction(q, 8);
     setPending(false);
     if ("error" in res) {
       setError(res.error);
@@ -94,80 +118,127 @@ export function DiscoverClient({
 
   return (
     <>
+      {/* Autonomous hunt — the main event */}
       <div
         style={{
           marginTop: 20,
+          background: "var(--color-flip)",
+          color: "#fff",
+          borderRadius: 16,
+          padding: 20,
+          boxShadow: "0 8px 24px -10px rgba(15,122,67,.5)",
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 18, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
+            <IconRadar2 size={20} /> Hunt products for me
+          </div>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,.9)", marginTop: 4, lineHeight: 1.5 }}>
+            FLIP picks the categories, finds Prime products on Amazon, and keeps
+            only the ones selling higher on eBay. No searching needed.
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <select
+            value={categories}
+            onChange={(e) => setCategories(Number(e.target.value))}
+            style={{
+              border: "none",
+              borderRadius: 10,
+              padding: "10px 12px",
+              fontSize: 13,
+              fontWeight: 600,
+              background: "rgba(255,255,255,.18)",
+              color: "#fff",
+            }}
+          >
+            {[2, 4, 6, 8].map((n) => (
+              <option key={n} value={n} style={{ color: "#111" }}>
+                {n} categories
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={hunt}
+            disabled={pending}
+            style={{
+              padding: "12px 24px",
+              background: "#fff",
+              color: "var(--color-flip)",
+              border: "none",
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 800,
+              cursor: pending ? "default" : "pointer",
+              opacity: pending ? 0.7 : 1,
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {pending ? "Hunting…" : <>Run hunt <IconBolt size={16} /></>}
+          </button>
+        </div>
+      </div>
+
+      {/* Manual search — secondary */}
+      <div
+        style={{
+          marginTop: 12,
           display: "flex",
           gap: 10,
           alignItems: "center",
           background: "var(--color-surface)",
-          padding: "8px 8px 8px 16px",
-          borderRadius: 14,
+          padding: "6px 6px 6px 14px",
+          borderRadius: 12,
           boxShadow: "0 1px 3px rgba(0,0,0,.05)",
         }}
       >
-        <IconSearch size={19} color="#9a9ea4" />
+        <IconSearch size={17} color="#9a9ea4" />
         <input
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") run();
           }}
-          placeholder="Search a product or category, e.g. dog dental treats"
+          placeholder="…or search a specific product / category"
           style={{
             flex: 1,
             border: "none",
             outline: "none",
             background: "transparent",
-            fontSize: 14,
+            fontSize: 13,
             color: "var(--color-ink)",
           }}
         />
-        <select
-          value={limit}
-          onChange={(e) => setLimit(Number(e.target.value))}
-          style={{
-            border: "1px solid var(--color-line)",
-            borderRadius: 9,
-            padding: "8px 10px",
-            fontSize: 13,
-            background: "var(--color-surface-2)",
-            color: "var(--color-ink)",
-          }}
-        >
-          {[5, 8, 10, 12].map((n) => (
-            <option key={n} value={n}>
-              {n} products
-            </option>
-          ))}
-        </select>
         <button
           type="button"
           onClick={() => run()}
           disabled={pending}
           style={{
-            padding: "12px 22px",
-            background: "var(--color-flip)",
-            color: "#fff",
-            border: "none",
-            borderRadius: 10,
-            fontSize: 14,
-            fontWeight: 700,
+            padding: "9px 16px",
+            background: "var(--color-surface-2)",
+            color: "var(--color-ink)",
+            border: "1px solid var(--color-line)",
+            borderRadius: 9,
+            fontSize: 13,
+            fontWeight: 600,
             cursor: pending ? "default" : "pointer",
-            opacity: pending ? 0.7 : 1,
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            whiteSpace: "nowrap",
           }}
         >
-          {pending ? "Finding…" : <>Find <IconBolt size={16} /></>}
+          Search
         </button>
       </div>
 
       <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-faint)" }}>
-        Ranked by eBay demand (sell velocity) × profit. Uses ~2 + N API lookups
-        per search.
+        Ranked by eBay demand (sell velocity) × profit. A hunt uses ~6 lookups
+        per category.
       </div>
 
       {/* Seasonal seeds */}
@@ -195,13 +266,7 @@ export function DiscoverClient({
           </div>
           {seasonal.slice(0, 2).map((s) => (
             <div key={s.event} style={{ marginTop: 10 }}>
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  marginBottom: 6,
-                }}
-              >
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
                 {s.event}{" "}
                 <span style={{ color: "var(--color-faint)", fontWeight: 600 }}>
                   · in {s.daysAway} day{s.daysAway === 1 ? "" : "s"}
@@ -235,17 +300,9 @@ export function DiscoverClient({
         </div>
       ) : null}
 
-      {/* Related searches (eBay demand expansion) */}
       {related.length ? (
         <div style={{ marginTop: 16 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: "var(--color-muted)",
-              marginBottom: 8,
-            }}
-          >
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--color-muted)", marginBottom: 8 }}>
             Buyers also search on eBay
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
@@ -271,7 +328,7 @@ export function DiscoverClient({
             fontWeight: 600,
           }}
         >
-          Scanning products against eBay sold comps…
+          Hunting Amazon products and checking each against eBay sold comps…
         </div>
       ) : candidates && candidates.length ? (
         <div style={{ marginTop: 16 }}>
@@ -280,14 +337,19 @@ export function DiscoverClient({
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
+              gap: 12,
               marginBottom: 10,
             }}
           >
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-muted)" }}>
-              {candidates.length} products ·{" "}
-              <span style={{ color: "var(--color-flip)" }}>
-                {candidates.filter((c) => c.worth).length} worth listing
-              </span>
+              {info ?? (
+                <>
+                  {candidates.length} products ·{" "}
+                  <span style={{ color: "var(--color-flip)" }}>
+                    {candidates.filter((c) => c.worth).length} worth listing
+                  </span>
+                </>
+              )}
             </div>
             <button
               type="button"
@@ -305,6 +367,7 @@ export function DiscoverClient({
                 fontWeight: 600,
                 cursor: "pointer",
                 boxShadow: "0 1px 3px rgba(0,0,0,.05)",
+                flexShrink: 0,
               }}
             >
               <IconDownload size={15} /> Export CSV
@@ -332,7 +395,11 @@ export function DiscoverClient({
             color: "var(--color-faint)",
           }}
         >
-          No products found for that search. Try different words.
+          {info ?? "No profitable products found this run."}
+          <div style={{ marginTop: 6, fontSize: 12 }}>
+            Try more categories, or run again — FLIP explores different ground
+            each time.
+          </div>
         </div>
       ) : null}
     </>
@@ -346,6 +413,7 @@ function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
       : c.net > 0
         ? "var(--color-amber-ink)"
         : "var(--color-cost)";
+  const amazonUrl = c.link.startsWith("http") ? c.link : `https://${c.link}`;
   return (
     <div
       style={{
@@ -373,11 +441,7 @@ function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
       >
         {c.image ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={c.image}
-            alt=""
-            style={{ width: "100%", height: "100%", objectFit: "contain" }}
-          />
+          <img src={c.image} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
         ) : null}
       </div>
 
@@ -396,31 +460,52 @@ function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
         >
           {c.title}
         </div>
-        <div
-          style={{
-            marginTop: 4,
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            color: "var(--color-muted)",
-          }}
-        >
-          Amazon ${c.amazonPrice.toFixed(2)} · eBay median $
-          {c.ebayMedian.toFixed(2)} · {c.soldCount} sold
+        <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              color: "var(--color-muted)",
+            }}
+          >
+            Amazon ${c.amazonPrice.toFixed(2)} · eBay ${c.ebayMedian.toFixed(2)} · {c.soldCount} sold
+          </span>
+          {c.isPrime ? (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: "var(--color-flip)",
+                background: "var(--color-go-soft)",
+                padding: "1px 6px",
+                borderRadius: 5,
+              }}
+            >
+              Prime
+            </span>
+          ) : null}
+          <a
+            href={amazonUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--color-muted)",
+              textDecoration: "none",
+            }}
+          >
+            <IconExternalLink size={12} /> Amazon
+          </a>
         </div>
       </div>
 
       <div style={{ textAlign: "right", flexShrink: 0 }}>
-        <div style={{ fontSize: 11, color: "var(--color-muted)", fontWeight: 600 }}>
-          Net
-        </div>
-        <div
-          style={{
-            fontSize: 20,
-            fontWeight: 800,
-            color: netColor,
-            letterSpacing: "-0.02em",
-          }}
-        >
+        <div style={{ fontSize: 11, color: "var(--color-muted)", fontWeight: 600 }}>Net</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: netColor, letterSpacing: "-0.02em" }}>
           ${c.net.toFixed(2)}
         </div>
       </div>

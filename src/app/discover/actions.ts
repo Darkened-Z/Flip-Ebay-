@@ -1,6 +1,7 @@
 "use server";
 
 import { discover, type Candidate } from "@/lib/scan/discover";
+import { runHunt } from "@/lib/sourcing/hunt";
 
 export type DiscoverResult =
   | { candidates: Candidate[]; related: string[] }
@@ -18,5 +19,20 @@ export async function discoverAction(
     return { candidates, related };
   } catch {
     return { error: "Search failed — please try again." };
+  }
+}
+
+export type HuntActionResult =
+  | { winners: Candidate[]; scanned: number; seeds: string[] }
+  | { error: string };
+
+export async function huntAction(
+  seedCount: number,
+): Promise<HuntActionResult> {
+  const n = Math.min(8, Math.max(2, Math.round(seedCount) || 4));
+  try {
+    return await runHunt(n, 6);
+  } catch {
+    return { error: "Hunt failed — please try again." };
   }
 }
