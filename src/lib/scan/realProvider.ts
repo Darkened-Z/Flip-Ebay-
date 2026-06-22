@@ -2,6 +2,7 @@ import type { ScanResult } from "@/lib/mockData";
 import { mockScan } from "@/lib/mockData";
 import { parseSource, type ScanProvider } from "./mockProvider";
 import { quickSalePrice } from "./pricing";
+import { isRestricted } from "@/lib/sourcing/restricted";
 
 // Real provider: Amazon product data via Rainforest API, eBay sold + active
 // comps via SerpApi's eBay engine. Activated when both API keys are set.
@@ -100,7 +101,9 @@ export class RainforestSerpApiProvider implements ScanProvider {
     const se = await getJson(seUrl);
     const organic = (se.organic_results as AnyObj[] | undefined) ?? [];
 
-    const sales = organic
+    const isNew = (c: string) =>
+      /\bnew\b/i.test(c) && !/used|parts|refurb|pre-?owned/i.test(c);
+    const mapped = organic
       .map((r) => {
         const price =
           num(get(r, "price.extracted")) ??
@@ -112,10 +115,14 @@ export class RainforestSerpApiProvider implements ScanProvider {
           price,
           when: when && !isNaN(when.getTime()) ? when : null,
           dateLabel: soldRaw,
+          condition: str(r.condition) ?? "",
           seller: str(get(r, "seller.username")) ?? str(r.seller) ?? "—",
         };
       })
       .filter((s) => s.price > 0);
+    // Keep only NEW sold comps (we sell new); fall back to all if none tagged.
+    const newOnly = mapped.filter((s) => isNew(s.condition));
+    const sales = newOnly.length ? newOnly : mapped;
 
     const prices = sales.map((s) => s.price);
     const med = round2(median(prices));
@@ -169,7 +176,9 @@ export class RainforestSerpApiProvider implements ScanProvider {
     // med (the true median) is still shown as a sold-history stat.
     const qsp = quickSalePrice(prices);
     const list = qsp > 0 ? qsp : med > 0 ? med : mockScan.pricing.list;
-    const fees = round2(list * 0.13);
+    // eBay final value fee ~13.6% + $0.30; item ships from Amazon (Prime) to
+    // the buyer, so no separate eBay shipping cost.
+    const fees = round2(list * 0.136 + 0.3);
     const shipping = 0;
     const tax = 0;
     const net = round2(list - amazonPrice - fees - shipping - tax);
@@ -210,7 +219,7 @@ export class RainforestSerpApiProvider implements ScanProvider {
         { label: "Prime\neligible", ok: isPrime },
         { label: "US seller\nBuy It Now", ok: true },
         { label: "Has sold\ncomps", ok: soldCount > 0 },
-        { label: "Not restricted\nbrand", ok: true },
+        { label: "Not restricted\nbrand", ok: !isRestricted(title, brand) },
       ],
       pricing: { list, sourceCost: round2(amazonPrice), fees, shipping, tax, net },
       velocity: {

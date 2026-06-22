@@ -73,7 +73,16 @@ async function ebaySold(
     const e = await getJson(
       `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete&api_key=${seKey}`,
     );
-    const prices = ((e.organic_results as { price?: { extracted?: number } }[]) ?? [])
+    const results =
+      (e.organic_results as { price?: { extracted?: number }; condition?: string }[]) ??
+      [];
+    // Only count NEW sold comps — we sell new, and used/refurb comps distort
+    // both price and demand. Fall back to all if no condition data.
+    const isNew = (c?: string) =>
+      /\bnew\b/i.test(c ?? "") && !/used|parts|refurb|pre-?owned/i.test(c ?? "");
+    let chosen = results.filter((r) => isNew(r.condition));
+    if (chosen.length === 0) chosen = results;
+    const prices = chosen
       .map((x) => x.price?.extracted)
       .filter((p): p is number => typeof p === "number" && p > 0);
     return { price: quickSalePrice(prices), soldCount: prices.length };
@@ -122,7 +131,7 @@ export async function searchCandidates(
         cleanQuery(title),
         seKey,
       );
-      const fees = round2(ebayPrice * 0.13);
+      const fees = round2(ebayPrice * 0.136 + 0.3);
       const net = round2(ebayPrice - amazonPrice - fees);
       return {
         asin,
@@ -150,7 +159,7 @@ function mockCandidates(term: string, limit: number): Candidate[] {
     .map((_, i) => {
       const amazonPrice = round2(12 + i * 3.5);
       const ebayPrice = round2(amazonPrice + 14 - i * 2);
-      const fees = round2(ebayPrice * 0.13);
+      const fees = round2(ebayPrice * 0.136 + 0.3);
       const net = round2(ebayPrice - amazonPrice - fees);
       const soldCount = 14 - i;
       return {
