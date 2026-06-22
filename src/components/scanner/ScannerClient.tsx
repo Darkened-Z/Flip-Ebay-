@@ -108,16 +108,59 @@ export function ScannerClient({
         <div
           style={{
             marginTop: 18,
-            padding: 48,
+            padding: "44px 24px",
             textAlign: "center",
             background: "var(--color-surface)",
             borderRadius: 16,
             boxShadow: "0 1px 3px rgba(0,0,0,.05)",
-            color: "var(--color-faint)",
-            fontSize: 14,
           }}
         >
-          Paste an Amazon or Sam&apos;s Club URL above and hit Scan.
+          <div style={{ color: "var(--color-muted)", fontSize: 14 }}>
+            Paste an Amazon or Sam&apos;s Club URL above to get a verdict — or:
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              justifyContent: "center",
+              marginTop: 16,
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => router.push("/discover")}
+              style={{
+                padding: "12px 20px",
+                background: "var(--color-flip)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 12,
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 14px -3px rgba(15,122,67,.5)",
+              }}
+            >
+              Find products in Discover →
+            </button>
+            <button
+              type="button"
+              onClick={() => handleScan("amazon.com/dp/B073JYC4XM")}
+              style={{
+                padding: "12px 20px",
+                background: "var(--color-surface)",
+                color: "var(--color-ink)",
+                border: "1px solid var(--color-line)",
+                borderRadius: 12,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Try a sample scan
+            </button>
+          </div>
         </div>
       )}
     </>
