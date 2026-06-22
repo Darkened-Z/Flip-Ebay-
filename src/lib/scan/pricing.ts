@@ -13,7 +13,7 @@ export function median(prices: number[]): number {
 // listing error, or fluke). Defaults to ~the 10th percentile; for a handful of
 // comps it falls back to the 2nd-lowest. Pair with a velocity check (enough
 // sold comps) before trusting it.
-export function quickSalePrice(prices: number[], percentile = 0.2): number {
+export function quickSalePrice(prices: number[], percentile = 0.1): number {
   const s = [...prices].filter((p) => p > 0).sort((a, b) => a - b);
   const n = s.length;
   if (n === 0) return 0;
