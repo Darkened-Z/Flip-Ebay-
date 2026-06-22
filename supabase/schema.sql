@@ -183,3 +183,30 @@ create policy "own alerts" on public.alerts
 drop policy if exists "own rules" on public.rules;
 create policy "own rules" on public.rules
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
+-- Saved finds (winners collected from hunts / searches)
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.finds (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  asin         text,
+  title        text,
+  image        text,
+  link         text,
+  amazon_price numeric(10,2),
+  ebay_price   numeric(10,2),
+  sold_count   integer,
+  net          numeric(10,2),
+  margin_pct   integer,
+  worth        boolean default false,
+  created_at   timestamptz not null default now(),
+  unique (user_id, asin)
+);
+
+alter table public.finds enable row level security;
+
+drop policy if exists "own finds" on public.finds;
+create policy "own finds" on public.finds
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

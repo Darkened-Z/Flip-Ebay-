@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { discoverAction, huntAction } from "@/app/discover/actions";
+import { saveFinds } from "@/app/finds/actions";
 import type { Candidate } from "@/lib/scan/discover";
 import type { SeasonalSuggestion } from "@/lib/sourcing/seasonal";
 import {
@@ -14,6 +15,7 @@ import {
   IconDownload,
   IconExternalLink,
   IconRadar2,
+  IconBookmark,
 } from "@tabler/icons-react";
 
 const chip: React.CSSProperties = {
@@ -80,6 +82,7 @@ export function DiscoverClient({
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [related, setRelated] = useState<string[]>([]);
   const [info, setInfo] = useState<string | null>(null);
+  const [saved, setSaved] = useState<number | null>(null);
 
   async function hunt() {
     if (pending) return;
@@ -87,6 +90,7 @@ export function DiscoverClient({
     setError(null);
     setRelated([]);
     setInfo(null);
+    setSaved(null);
     const res = await huntAction(categories);
     setPending(false);
     if ("error" in res) {
@@ -106,6 +110,7 @@ export function DiscoverClient({
     setPending(true);
     setError(null);
     setInfo(null);
+    setSaved(null);
     const res = await discoverAction(q, 8);
     setPending(false);
     if ("error" in res) {
@@ -114,6 +119,13 @@ export function DiscoverClient({
     }
     setCandidates(res.candidates);
     setRelated(res.related);
+  }
+
+  async function handleSave() {
+    if (!candidates?.length) return;
+    const res = await saveFinds(candidates);
+    if ("saved" in res) setSaved(res.saved);
+    else setError(res.error);
   }
 
   return (
@@ -351,27 +363,48 @@ export function DiscoverClient({
                 </>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => exportCsv(candidates)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                background: "var(--color-surface)",
-                color: "var(--color-ink)",
-                border: "1px solid var(--color-line)",
-                borderRadius: 10,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                boxShadow: "0 1px 3px rgba(0,0,0,.05)",
-                flexShrink: 0,
-              }}
-            >
-              <IconDownload size={15} /> Export CSV
-            </button>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={handleSave}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "8px 14px",
+                  background: "var(--color-flip)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                <IconBookmark size={15} />{" "}
+                {saved === null ? "Save finds" : `Saved ${saved}`}
+              </button>
+              <button
+                type="button"
+                onClick={() => exportCsv(candidates)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "8px 14px",
+                  background: "var(--color-surface)",
+                  color: "var(--color-ink)",
+                  border: "1px solid var(--color-line)",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  boxShadow: "0 1px 3px rgba(0,0,0,.05)",
+                }}
+              >
+                <IconDownload size={15} /> Export CSV
+              </button>
+            </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {candidates.map((c) => (
