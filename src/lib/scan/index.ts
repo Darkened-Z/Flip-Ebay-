@@ -1,12 +1,15 @@
 import type { ScanResult } from "@/lib/mockData";
 import { MockProvider, type ScanProvider } from "./mockProvider";
+import { RainforestSerpApiProvider } from "./realProvider";
 
-// Selects the active scan provider. When the real API keys are present we'll
-// return a RainforestSerpApiProvider here instead — the only line that changes.
+// Uses the real Rainforest + SerpApi provider when both keys are present,
+// otherwise falls back to the mock provider so the app always works.
 function getProvider(): ScanProvider {
-  // if (process.env.RAINFOREST_API_KEY && process.env.SERPAPI_KEY) {
-  //   return new RainforestSerpApiProvider();
-  // }
+  const rainforest = process.env.RAINFOREST_API_KEY;
+  const serpapi = process.env.SERPAPI_KEY;
+  if (rainforest && serpapi) {
+    return new RainforestSerpApiProvider(rainforest, serpapi);
+  }
   return new MockProvider();
 }
 
