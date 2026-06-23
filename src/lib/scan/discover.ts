@@ -68,11 +68,15 @@ async function getJson(url: string): Promise<Record<string, unknown>> {
 }
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-// eBay take rate + per-order fixed fee. There is NO separate shipping cost:
-// FLIP's model is dropship — Amazon ships the item straight to the eBay buyer
-// with free Prime delivery, so the Amazon price already covers shipping. (The
-// deep scan uses the same shipping=0 assumption.)
+// What eBay takes on a sale, as a fraction of the sale price + a fixed per-order
+// fee. EBAY_FEE_RATE is the all-in final value fee (≈13.25% + the ~0.35%
+// regulatory operating fee; payment processing is already included in eBay's
+// consolidated fee). PROMOTED_AD_RATE is our Promoted Listings ad rate. There is
+// NO shipping cost: FLIP dropships, so Amazon ships to the eBay buyer with free
+// Prime delivery. Adjust these to match your eBay fee calculator.
 const EBAY_FEE_RATE = 0.136;
+const PROMOTED_AD_RATE = 0.03;
+const SELL_FEE_RATE = EBAY_FEE_RATE + PROMOTED_AD_RATE; // 16.6% of the sale
 const EBAY_FEE_FIXED = 0.3;
 
 export function demandScore(net: number, soldCount: number): number {
@@ -264,7 +268,7 @@ function toCandidate(
   ebay: { price: number; soldCount: number },
   source: "search" | "deal",
 ): Candidate {
-  const fees = round2(ebay.price * EBAY_FEE_RATE + EBAY_FEE_FIXED);
+  const fees = round2(ebay.price * SELL_FEE_RATE + EBAY_FEE_FIXED);
   const net = round2(ebay.price - amazonPrice - fees);
   return {
     asin,
@@ -422,7 +426,7 @@ function mockCandidates(term: string, limit: number): Candidate[] {
     .map((_, i) => {
       const amazonPrice = round2(12 + i * 3.5);
       const ebayPrice = round2(amazonPrice + 14 - i * 2);
-      const fees = round2(ebayPrice * EBAY_FEE_RATE + EBAY_FEE_FIXED);
+      const fees = round2(ebayPrice * SELL_FEE_RATE + EBAY_FEE_FIXED);
       const net = round2(ebayPrice - amazonPrice - fees);
       const soldCount = 14 - i;
       return {

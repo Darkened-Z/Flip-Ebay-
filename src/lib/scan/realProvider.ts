@@ -193,9 +193,9 @@ export class RainforestSerpApiProvider implements ScanProvider {
     // med (the true median) is still shown as a sold-history stat.
     const qsp = quickSalePrice(prices);
     const list = qsp > 0 ? qsp : med > 0 ? med : mockScan.pricing.list;
-    // eBay final value fee ~13.6% + $0.30; item ships from Amazon (Prime) to
-    // the buyer, so no separate eBay shipping cost.
-    const fees = round2(list * 0.136 + 0.3);
+    // eBay all-in final value fee ~13.6% + 3% Promoted Listings ad rate + $0.30
+    // per order; item ships from Amazon (Prime) to the buyer, so no shipping cost.
+    const fees = round2(list * 0.166 + 0.3);
     const shipping = 0;
     const tax = 0;
     const net = round2(list - amazonPrice - fees - shipping - tax);
