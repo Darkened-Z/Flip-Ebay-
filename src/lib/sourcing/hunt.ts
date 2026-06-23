@@ -2,6 +2,7 @@ import {
   searchCandidates,
   dealsCandidates,
   ebayActive,
+  inStockOver,
   cleanQuery,
   demandScore,
   type Candidate,
@@ -80,13 +81,18 @@ export async function runHunt(
     );
   }
 
-  const winners = pool
+  const ranked = pool
     .sort((a, b) => composite(b) - composite(a))
-    .slice(0, 15);
+    .slice(0, 10); // cap the per-winner stock calls below
 
-  // When winners are thin, surface the closest real products (some sold history,
-  // best net) so a run is never an unhelpful blank — even if they currently sell
-  // for less on eBay, they show the user the tool worked and what it found.
+  // Stock pass: drop winners Amazon flags as low/out of stock — no point
+  // surfacing something you can't actually source. One Rainforest product call
+  // each, so it runs only on this final shortlist (best-effort; keeps on error).
+  const stockOk = await Promise.all(ranked.map((c) => inStockOver(c.asin, 10)));
+  const winners = ranked.filter((_, i) => stockOk[i]);
+
+  // When winners are thin, surface the closest real products (some recent sold
+  // history, best net) so a run is never an unhelpful blank.
   const winnerAsins = new Set(winners.map((c) => c.asin));
   const nearMisses = deduped
     .filter((c) => !winnerAsins.has(c.asin) && c.soldCount >= 2)

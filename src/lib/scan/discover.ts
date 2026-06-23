@@ -58,6 +58,7 @@ type SoldRow = {
   title?: string;
   buying_format?: string; // buy_it_now | accepts_offers | auction
   location?: string;
+  sold_date?: string; // e.g. "Jun 22, 2026"
 };
 
 async function getJson(url: string): Promise<Record<string, unknown>> {
@@ -174,10 +175,21 @@ async function ebaySold(
       }
     }
 
-    const prices = chosen
+    // eBay's sold view reaches back ~a year, so a raw comp count overstates how
+    // fast a thing moves. Count only comps sold in the last 30 days — the real
+    // recent velocity — and price off those (falling back to all matches if the
+    // recent sample is too thin to price reliably).
+    const now = Date.now();
+    const soldWithin30 = (raw?: string) => {
+      const t = raw ? new Date(raw).getTime() : NaN;
+      return !Number.isNaN(t) && now - t <= 30 * 86_400_000;
+    };
+    const recent = chosen.filter((r) => soldWithin30(r.sold_date));
+    const priceFrom = recent.length >= 3 ? recent : chosen;
+    const prices = priceFrom
       .map((x) => x.price?.extracted)
       .filter((p): p is number => typeof p === "number" && p > 0);
-    return { price: quickSalePrice(prices), soldCount: prices.length };
+    return { price: quickSalePrice(prices), soldCount: recent.length };
   } catch {
     return { price: 0, soldCount: 0 };
   }
@@ -199,6 +211,33 @@ export async function ebayActive(
     return typeof info?.total_results === "number" ? info.total_results : null;
   } catch {
     return null;
+  }
+}
+
+// Is this ASIN comfortably in stock on Amazon (more than `min` units)? Costs one
+// Rainforest product call. Amazon only shows an exact number when stock is low
+// ("Only N left in stock"); a plain "In Stock" means plenty. Best-effort: on an
+// error or missing data we keep the item rather than wrongly dropping a winner.
+export async function inStockOver(asin: string, min = 10): Promise<boolean> {
+  const { rfKey } = keys();
+  if (!rfKey) return true;
+  try {
+    const p = await getJson(
+      `${RAINFOREST}?api_key=${rfKey}&type=product&amazon_domain=amazon.com&asin=${encodeURIComponent(asin)}`,
+    );
+    const product = (p.product as Record<string, unknown>) ?? {};
+    const bb = product.buybox_winner as
+      | { availability?: { type?: string; raw?: string } }
+      | undefined;
+    const type = bb?.availability?.type ?? "";
+    const raw = bb?.availability?.raw ?? "";
+    if (type === "out_of_stock" || /out of stock|unavailable/i.test(raw))
+      return false;
+    const onlyLeft = raw.match(/only\s+(\d+)\s+left/i);
+    if (onlyLeft) return Number(onlyLeft[1]) > min; // "Only N left in stock"
+    return true; // "In Stock" with no number => plenty
+  } catch {
+    return true;
   }
 }
 

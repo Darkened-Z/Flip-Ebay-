@@ -17,7 +17,7 @@ function exportCsv(rows: Candidate[]) {
     "Amazon URL",
     "Amazon Price",
     "eBay Price",
-    "Sold comps",
+    "Sold (30d)",
     "Net Profit",
     "Margin %",
     "Worth Listing",
@@ -210,7 +210,7 @@ export function FindsClient({ finds }: { finds: Candidate[] }) {
                       color: "var(--color-muted)",
                     }}
                   >
-                    Amazon ${c.amazonPrice.toFixed(2)} · eBay ${c.ebayPrice.toFixed(2)} · {c.soldCount} sold comps
+                    Amazon ${c.amazonPrice.toFixed(2)} · eBay ${c.ebayPrice.toFixed(2)} · {c.soldCount} sold/30d
                   </span>
                   <a
                     href={amazonUrl}

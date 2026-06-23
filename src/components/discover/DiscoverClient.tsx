@@ -36,7 +36,7 @@ function exportCsv(rows: Candidate[]) {
     "Amazon URL",
     "Amazon Price",
     "eBay Price",
-    "Sold comps",
+    "Sold (30d)",
     "Net Profit",
     "Margin %",
     "Prime",
@@ -532,7 +532,7 @@ function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
               color: "var(--color-muted)",
             }}
           >
-            Amazon ${c.amazonPrice.toFixed(2)} · eBay ${c.ebayPrice.toFixed(2)} · {c.soldCount} sold comps
+            Amazon ${c.amazonPrice.toFixed(2)} · eBay ${c.ebayPrice.toFixed(2)} · {c.soldCount} sold/30d
             {c.competition != null ? ` · ${c.competition} competing` : ""}
           </span>
           {c.isPrime ? (
