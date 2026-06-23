@@ -76,6 +76,10 @@ export class RainforestSerpApiProvider implements ScanProvider {
 
     const title = str(product.title) ?? mockScan.source.title;
     const brand = str(product.brand) ?? mockScan.source.subtitle;
+    const image =
+      str(get(product, "main_image.link")) ??
+      str((product.images as { link?: string }[] | undefined)?.[0]?.link) ??
+      null;
     const amazonPrice =
       num(get(product, "buybox_winner.price.value")) ??
       num(get(product, "price.value")) ??
@@ -204,6 +208,7 @@ export class RainforestSerpApiProvider implements ScanProvider {
         subtitle: brand,
         price: round2(amazonPrice),
         inStock: true,
+        image,
       },
       verdict: {
         ...mockScan.verdict,

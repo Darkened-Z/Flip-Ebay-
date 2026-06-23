@@ -14,6 +14,7 @@ export type Listing = {
   tone: ListingTone;
   note?: string;
   productVariant?: "default" | "alt-1" | "alt-2";
+  image?: string | null;
 };
 
 export type DashboardSummary = {

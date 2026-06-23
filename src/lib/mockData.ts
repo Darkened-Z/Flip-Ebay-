@@ -8,6 +8,7 @@ export type ScanResult = {
     subtitle: string;
     price: number;
     inStock: boolean;
+    image: string | null;
   };
   verdict: {
     label: "Worth listing" | "Skip" | "Review";
@@ -55,6 +56,7 @@ export const mockScan: ScanResult = {
     subtitle: "36 ct · Bacon flavor",
     price: 18.59,
     inStock: true,
+    image: null,
   },
   verdict: {
     label: "Worth listing",

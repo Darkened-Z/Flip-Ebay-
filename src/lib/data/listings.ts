@@ -12,6 +12,7 @@ type ListingRow = {
   net_profit: number | null;
   views: number | null;
   product_variant: string | null;
+  image_urls: string[] | null;
   created_at: string | null;
 };
 
@@ -32,7 +33,7 @@ export async function getUserListings(): Promise<Listing[]> {
     const { data } = await supabase
       .from("listings")
       .select(
-        "id,title,source,source_id,sku,status,list_price,net_profit,views,product_variant,created_at",
+        "id,title,source,source_id,sku,status,list_price,net_profit,views,product_variant,image_urls,created_at",
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
@@ -58,6 +59,7 @@ export async function getUserListings(): Promise<Listing[]> {
         r.product_variant === "alt-1" || r.product_variant === "alt-2"
           ? r.product_variant
           : "default",
+      image: r.image_urls?.[0] ?? null,
     }));
   } catch {
     return [];

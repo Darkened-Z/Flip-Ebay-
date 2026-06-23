@@ -152,7 +152,24 @@ export function ScanResultView({
       <div className="grid-verdict" style={{ marginTop: 18 }}>
         <div style={card}>
           <div style={{ display: "flex", gap: 14 }}>
-            <ProductGlyph size={96} />
+            {s.source.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={s.source.image}
+                alt=""
+                style={{
+                  width: 96,
+                  height: 96,
+                  borderRadius: 12,
+                  objectFit: "contain",
+                  background: "#fff",
+                  border: "1px solid var(--color-line)",
+                  flexShrink: 0,
+                }}
+              />
+            ) : (
+              <ProductGlyph size={96} />
+            )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.3 }}>
                 {s.source.title}

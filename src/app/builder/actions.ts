@@ -30,6 +30,7 @@ export async function createDraftFromScan(
         source_cost: scan.pricing.sourceCost,
         net_profit: scan.pricing.net,
         quantity: 1,
+        image_urls: scan.source.image ? [scan.source.image] : null,
       })
       .select("id")
       .single();

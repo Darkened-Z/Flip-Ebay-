@@ -26,6 +26,7 @@ type ListingRow = {
   list_price: number | null;
   net_profit: number | null;
   status: string | null;
+  image_urls: string[] | null;
 };
 
 function SetupLine({ k, v }: { k: string; v: string }) {
@@ -63,7 +64,9 @@ export default async function BuilderPage({
       if (user) {
         const { data } = await supabase
           .from("listings")
-          .select("id,title,source_id,source_cost,list_price,net_profit,status")
+          .select(
+            "id,title,source_id,source_cost,list_price,net_profit,status,image_urls",
+          )
           .eq("id", id)
           .eq("user_id", user.id)
           .maybeSingle();
@@ -124,7 +127,24 @@ export default async function BuilderPage({
                   gap: 14,
                 }}
               >
-                <ProductGlyph size={54} />
+                {listing.image_urls?.[0] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={listing.image_urls[0]}
+                    alt=""
+                    style={{
+                      width: 54,
+                      height: 54,
+                      borderRadius: 10,
+                      objectFit: "contain",
+                      background: "#fff",
+                      border: "1px solid var(--color-line)",
+                      flexShrink: 0,
+                    }}
+                  />
+                ) : (
+                  <ProductGlyph size={54} />
+                )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>
                     {listing.title}

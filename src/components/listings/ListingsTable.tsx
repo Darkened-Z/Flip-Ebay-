@@ -70,10 +70,26 @@ export function ListingsTable({ listings }: { listings: Listing[] }) {
               }}
             >
               <td style={{ padding: "10px 8px 10px 0" }}>
-                <ProductGlyph
-                  size={34}
-                  variant={l.productVariant ?? "default"}
-                />
+                {l.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={l.image}
+                    alt=""
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 8,
+                      objectFit: "contain",
+                      background: "#fff",
+                      border: "1px solid var(--color-line)",
+                    }}
+                  />
+                ) : (
+                  <ProductGlyph
+                    size={34}
+                    variant={l.productVariant ?? "default"}
+                  />
+                )}
               </td>
               <td style={{ padding: "10px 8px" }}>
                 <div style={{ fontWeight: 600 }}>{l.title}</div>
