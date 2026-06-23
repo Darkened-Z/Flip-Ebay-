@@ -1,4 +1,5 @@
 import { quickSalePrice } from "./pricing";
+import { isRestricted } from "@/lib/sourcing/restricted";
 
 export type Candidate = {
   asin: string;
@@ -282,6 +283,8 @@ export async function searchCandidates(
       const amazonPrice = r.price?.value;
       if (!asin || !title || typeof amazonPrice !== "number" || amazonPrice <= 0)
         return null;
+      // Skip gated/VeRO brands before spending an eBay lookup on them.
+      if (isRestricted(title)) return null;
       const ebay = await ebaySold(cleanQuery(title), seKey, title);
       return toCandidate(
         asin,
@@ -320,6 +323,7 @@ export async function dealsCandidates(limit: number): Promise<Candidate[]> {
           r.current_price?.value ?? r.list_price?.value ?? r.deal_price?.value;
         if (!asin || !title || typeof amazonPrice !== "number" || amazonPrice <= 0)
           return null;
+        if (isRestricted(title)) return null;
         const ebay = await ebaySold(cleanQuery(title), seKey, title);
         return toCandidate(
           asin,

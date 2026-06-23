@@ -44,5 +44,10 @@ const RESTRICTED = [
 
 export function isRestricted(title: string, brand?: string): boolean {
   const hay = `${brand ?? ""} ${title}`.toLowerCase();
-  return RESTRICTED.some((b) => hay.includes(b));
+  // Whole-word match so "apple" doesn't flag "pineapple" and "ugg" doesn't
+  // flag "rugged". Brand strings are lowercased; only `.` etc. need escaping.
+  return RESTRICTED.some((b) => {
+    const escaped = b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\b${escaped}\\b`).test(hay);
+  });
 }
