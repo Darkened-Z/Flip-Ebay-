@@ -278,19 +278,31 @@ async function ebaySoldMany(
 ): Promise<{ price: number; soldCount: number }[]> {
   if (reqs.length === 0) return [];
   if (hasApify()) {
-    const items = await apifyEbaySoldBatch(reqs.map((r) => r.query));
-    if (items) {
-      const byKw = new Map<string, Record<string, unknown>[]>();
+    // The actor chokes on long keyword lists (a ~16-keyword run comes back
+    // empty), so chunk into small batches. The concurrency gate runs a couple
+    // chunks at a time without overwhelming the free plan.
+    const CHUNK = 4;
+    const queries = reqs.map((r) => r.query);
+    const chunks: string[][] = [];
+    for (let i = 0; i < queries.length; i += CHUNK)
+      chunks.push(queries.slice(i, i + CHUNK));
+    const results = await Promise.all(chunks.map((c) => apifyEbaySoldBatch(c)));
+    const byKw = new Map<string, Record<string, unknown>[]>();
+    let any = false;
+    for (const items of results) {
+      if (!items) continue;
+      any = true;
       for (const it of items) {
         const k = typeof it.keyword === "string" ? it.keyword : "";
         const arr = byKw.get(k);
         if (arr) arr.push(it);
         else byKw.set(k, [it]);
       }
+    }
+    if (any)
       return reqs.map((r) =>
         computeSold(apifyItemsToRows(byKw.get(r.query) ?? []), r.refTitle),
       );
-    }
   }
   const { seKey } = keys();
   return Promise.all(reqs.map((r) => ebaySold(r.query, seKey, r.refTitle)));
