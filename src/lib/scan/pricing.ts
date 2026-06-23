@@ -8,12 +8,12 @@ export function median(prices: number[]): number {
   return round2(n % 2 ? s[m] : (s[m - 1] + s[m]) / 2);
 }
 
-// The price you'd realistically LIST at to sell quickly: near the bottom of
-// sold comps, but not the absolute floor (which is usually a damaged item,
-// listing error, or fluke). Defaults to ~the 10th percentile; for a handful of
-// comps it falls back to the 2nd-lowest. Pair with a velocity check (enough
-// sold comps) before trusting it.
-export function quickSalePrice(prices: number[], percentile = 0.1): number {
+// The price you'd realistically LIST at to sell quickly: the lower quartile of
+// sold comps — below the median so it moves fast, but not the give-away floor
+// (which is usually a damaged item, listing error, or fluke). Defaults to ~the
+// 25th percentile; for a handful of comps it falls back to the 2nd-lowest. Pair
+// with a velocity check (enough sold comps) before trusting it.
+export function quickSalePrice(prices: number[], percentile = 0.25): number {
   const s = [...prices].filter((p) => p > 0).sort((a, b) => a - b);
   const n = s.length;
   if (n === 0) return 0;

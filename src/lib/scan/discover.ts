@@ -159,9 +159,13 @@ async function ebaySold(
     if (refTitle) {
       const toks = keyTokens(refTitle);
       if (toks.length > 0) {
-        // Require more matching tokens for longer (more descriptive) titles so a
-        // couple of generic category words can't qualify an unrelated product.
-        const need = Math.min(toks.length, Math.max(2, Math.ceil(toks.length / 2)));
+        // Need 2 whole-word token matches (or all tokens, if the title has
+        // fewer). Whole-word keeps it precise (no "staircase" for "case"), but
+        // staying at 2 lets a generic comp ("American Flag 3x5") match a
+        // branded product ("Anley American Flag") on its real category words —
+        // requiring more was filtering out legitimate comps and starving the
+        // velocity count.
+        const need = Math.min(2, toks.length);
         chosen = chosen.filter((r) => {
           const t = String(r.title ?? "").toLowerCase();
           return toks.filter((k) => wordHit(t, k)).length >= need;
