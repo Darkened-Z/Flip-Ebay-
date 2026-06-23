@@ -68,14 +68,12 @@ async function getJson(url: string): Promise<Record<string, unknown>> {
 }
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-// eBay take rate + per-order fixed fee, plus a conservative flat outbound
-// shipping cost the seller absorbs to sell quickly at the low-end comp price.
-// Tune EST_SHIP_COST if you ship heavier/lighter parcels or pass shipping to
-// the buyer — it is deliberately conservative so thin "winners" that are really
-// break-even get filtered out rather than shown to the client.
+// eBay take rate + per-order fixed fee. There is NO separate shipping cost:
+// FLIP's model is dropship — Amazon ships the item straight to the eBay buyer
+// with free Prime delivery, so the Amazon price already covers shipping. (The
+// deep scan uses the same shipping=0 assumption.)
 const EBAY_FEE_RATE = 0.136;
 const EBAY_FEE_FIXED = 0.3;
-const EST_SHIP_COST = 5;
 
 export function demandScore(net: number, soldCount: number): number {
   return net * (1 + Math.min(soldCount, 20) / 5);
@@ -266,9 +264,7 @@ function toCandidate(
   ebay: { price: number; soldCount: number },
   source: "search" | "deal",
 ): Candidate {
-  const fees = round2(
-    ebay.price * EBAY_FEE_RATE + EBAY_FEE_FIXED + EST_SHIP_COST,
-  );
+  const fees = round2(ebay.price * EBAY_FEE_RATE + EBAY_FEE_FIXED);
   const net = round2(ebay.price - amazonPrice - fees);
   return {
     asin,
@@ -426,9 +422,7 @@ function mockCandidates(term: string, limit: number): Candidate[] {
     .map((_, i) => {
       const amazonPrice = round2(12 + i * 3.5);
       const ebayPrice = round2(amazonPrice + 14 - i * 2);
-      const fees = round2(
-        ebayPrice * EBAY_FEE_RATE + EBAY_FEE_FIXED + EST_SHIP_COST,
-      );
+      const fees = round2(ebayPrice * EBAY_FEE_RATE + EBAY_FEE_FIXED);
       const net = round2(ebayPrice - amazonPrice - fees);
       const soldCount = 14 - i;
       return {
