@@ -72,6 +72,7 @@ export const mockScan: ScanResult = {
     { label: "US seller\nBuy It Now", ok: true },
     { label: "Has sold\ncomps", ok: true },
     { label: "Not restricted\nbrand", ok: true },
+    { label: "Low-risk\ncategory", ok: true },
   ],
   pricing: {
     list: 48.0,

@@ -3,6 +3,7 @@ import { mockScan } from "@/lib/mockData";
 import { parseSource, type ScanProvider } from "./mockProvider";
 import { quickSalePrice } from "./pricing";
 import { isRestricted } from "@/lib/sourcing/restricted";
+import { isExcludedCategory } from "@/lib/sourcing/excluded";
 
 // Real provider: Amazon product data via Rainforest API, eBay sold + active
 // comps via SerpApi's eBay engine. Activated when both API keys are set.
@@ -237,6 +238,7 @@ export class RainforestSerpApiProvider implements ScanProvider {
         { label: "US seller\nBuy It Now", ok: usBinOk },
         { label: "Has sold\ncomps", ok: soldCount > 0 },
         { label: "Not restricted\nbrand", ok: !isRestricted(title, brand) },
+        { label: "Low-risk\ncategory", ok: !isExcludedCategory(title) },
       ],
       pricing: { list, sourceCost: round2(amazonPrice), fees, shipping, tax, net },
       velocity: {
