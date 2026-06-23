@@ -40,6 +40,7 @@ type SearchRow = {
   link?: string;
   is_prime?: boolean;
   price?: { value?: number };
+  ratings_total?: number; // review count — a free demand proxy
 };
 type DealRow = {
   asin?: string;
@@ -264,29 +265,45 @@ export async function searchCandidates(
     ),
   );
 
+  // Mine the FULL result set we already paid Rainforest for (~48/page), not just
+  // the first few. Dedup by ASIN.
   const seen = new Set<string>();
-  const rows: SearchRow[] = [];
+  const all: SearchRow[] = [];
   for (const pr of pageResults) {
     for (const r of (pr.search_results as SearchRow[]) ?? []) {
       if (r.asin && !seen.has(r.asin)) {
         seen.add(r.asin);
-        rows.push(r);
-        if (rows.length >= limit) break;
+        all.push(r);
       }
     }
-    if (rows.length >= limit) break;
   }
 
+  // Free pre-filter (price, gated brands, bad-fit categories) + rank by review
+  // count, then keep only `limit`. An eBay sold lookup costs one call each — the
+  // scarce resource — so spend them on the most promising candidates from the
+  // whole haul (popular products are likeliest to have real eBay demand) rather
+  // than the arbitrary first few the search happened to return.
+  const shortlist = all
+    .filter((r) => {
+      const price = r.price?.value;
+      return (
+        !!r.asin &&
+        !!r.title &&
+        typeof price === "number" &&
+        price > 0 &&
+        !isRestricted(r.title) &&
+        !isExcludedCategory(r.title)
+      );
+    })
+    .sort((a, b) => (b.ratings_total ?? 0) - (a.ratings_total ?? 0))
+    .slice(0, limit);
+
   const candidates = await Promise.all(
-    rows.map(async (r): Promise<Candidate | null> => {
+    shortlist.map(async (r): Promise<Candidate | null> => {
       const asin = r.asin;
       const title = r.title;
       const amazonPrice = r.price?.value;
-      if (!asin || !title || typeof amazonPrice !== "number" || amazonPrice <= 0)
-        return null;
-      // Skip gated brands + bad-fit categories (cosmetics, glass, food/supps)
-      // before spending an eBay lookup on them.
-      if (isRestricted(title) || isExcludedCategory(title)) return null;
+      if (!asin || !title || typeof amazonPrice !== "number") return null;
       const ebay = await ebaySold(cleanQuery(title), seKey, title);
       return toCandidate(
         asin,
