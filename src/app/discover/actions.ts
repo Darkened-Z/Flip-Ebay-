@@ -2,6 +2,7 @@
 
 import { discover, type Candidate } from "@/lib/scan/discover";
 import { runHunt } from "@/lib/sourcing/hunt";
+import { saveFinds } from "@/app/finds/actions";
 
 export type DiscoverResult =
   | { candidates: Candidate[]; related: string[] }
@@ -23,7 +24,7 @@ export async function discoverAction(
 }
 
 export type HuntActionResult =
-  | { winners: Candidate[]; scanned: number; seeds: string[] }
+  | { winners: Candidate[]; scanned: number; seeds: string[]; saved: number }
   | { error: string };
 
 export async function huntAction(
@@ -31,7 +32,12 @@ export async function huntAction(
 ): Promise<HuntActionResult> {
   const n = Math.min(8, Math.max(2, Math.round(seedCount) || 3));
   try {
-    return await runHunt(n); // free-tier defaults: 1 page, no competition pass
+    const result = await runHunt(n); // free-tier defaults: 1 page, no competition pass
+    // Auto-save the winners to the Finds tab so they're there to list later.
+    // Idempotent (upsert ignores duplicates), so re-runs won't pile up dupes.
+    const res = await saveFinds(result.winners);
+    const saved = "saved" in res ? res.saved : 0;
+    return { ...result, saved };
   } catch {
     return { error: "Hunt failed — please try again." };
   }

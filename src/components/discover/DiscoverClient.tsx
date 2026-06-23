@@ -102,8 +102,9 @@ export function DiscoverClient({
       return;
     }
     setCandidates(res.winners);
+    if (res.saved > 0) setSaved(res.saved);
     setInfo(
-      `Found ${res.winners.length} winner${res.winners.length === 1 ? "" : "s"} from ${res.scanned} products across ${res.seeds.length} categories: ${res.seeds.join(", ")}`,
+      `Found ${res.winners.length} winner${res.winners.length === 1 ? "" : "s"} from ${res.scanned} products${res.saved > 0 ? ` · saved to your Finds tab` : ""}. Categories: ${res.seeds.join(", ")}`,
     );
   }
 
