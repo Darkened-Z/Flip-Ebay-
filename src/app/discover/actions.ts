@@ -29,9 +29,9 @@ export type HuntActionResult =
 export async function huntAction(
   seedCount: number,
 ): Promise<HuntActionResult> {
-  const n = Math.min(8, Math.max(2, Math.round(seedCount) || 4));
+  const n = Math.min(8, Math.max(2, Math.round(seedCount) || 3));
   try {
-    return await runHunt(n, 6);
+    return await runHunt(n); // free-tier defaults: 1 page, no competition pass
   } catch {
     return { error: "Hunt failed — please try again." };
   }

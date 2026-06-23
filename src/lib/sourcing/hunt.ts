@@ -23,19 +23,23 @@ function composite(c: Candidate): number {
   return base / (1 + Math.log10(1 + c.competition / 25));
 }
 
-// Autonomous hunt: FLIP picks categories itself, scans Amazon search (2 pages)
-// + today's deals, checks each against eBay sold comps, and returns the ones
-// selling higher on eBay. The strongest candidates also get a competition pass
-// so low-competition items rank highest.
+// Autonomous hunt: FLIP picks categories itself, scans Amazon search + today's
+// deals, checks each against eBay sold comps, and returns the ones selling
+// higher on eBay. Defaults are tuned for a FREE API tier — 1 search page and no
+// competition pass — which costs roughly seedCount*perSeed + perSeed SerpApi
+// calls per run. Pass { pages: 2, competition: true } for a richer, pricier run.
 export async function runHunt(
-  seedCount = 4,
-  perSeed = 6,
+  seedCount = 3,
+  perSeed = 3,
+  opts: { pages?: number; competition?: boolean } = {},
 ): Promise<HuntResult> {
+  const pages = opts.pages ?? 1;
+  const withCompetition = opts.competition ?? false;
   const seeds = buildHuntSeeds(new Date(), seedCount);
 
   const batches = await Promise.all([
     ...seeds.map((s) =>
-      searchCandidates(s, perSeed, 2).catch(() => [] as Candidate[]),
+      searchCandidates(s, perSeed, pages).catch(() => [] as Candidate[]),
     ),
     dealsCandidates(perSeed).catch(() => [] as Candidate[]),
   ]);
@@ -64,7 +68,7 @@ export async function runHunt(
     .slice(0, 20);
 
   const seKey = process.env.SERPAPI_KEY;
-  if (seKey) {
+  if (withCompetition && seKey) {
     await Promise.all(
       pool.map(async (c) => {
         const active = await ebayActive(cleanQuery(c.title), seKey);
