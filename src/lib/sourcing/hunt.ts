@@ -14,17 +14,19 @@ export type HuntResult = {
   seeds: string[];
 };
 
-// Profit × velocity, boosted by sell-through (low competition sells faster).
+// Profit × velocity, penalized by how many active eBay listings compete for the
+// same sale (fewer competitors => easier/faster sale => higher rank). Unknown
+// competition ranks on demand alone — never with a fabricated boost.
 function composite(c: Candidate): number {
   const base = demandScore(c.net, c.soldCount);
-  const st = c.sellThrough ?? 50;
-  return base * (0.5 + st / 100);
+  if (c.competition == null) return base;
+  return base / (1 + Math.log10(1 + c.competition / 25));
 }
 
 // Autonomous hunt: FLIP picks categories itself, scans Amazon search (2 pages)
 // + today's deals, checks each against eBay sold comps, and returns the ones
-// selling higher on eBay. The top winners also get a competition / sell-through
-// pass so low-competition fast sellers rank highest.
+// selling higher on eBay. The strongest candidates also get a competition pass
+// so low-competition items rank highest.
 export async function runHunt(
   seedCount = 4,
   perSeed = 6,
@@ -50,27 +52,29 @@ export async function runHunt(
   }
   const deduped = [...byAsin.values()];
 
-  let winners = deduped
-    .filter((c) => c.net > 0 && c.soldCount >= 2)
+  // A wider pool enters the competition pass than we ultimately show, so a
+  // low-competition item that ranked just outside the top by raw demand can
+  // still surface once competition factors into the final composite ranking.
+  // soldCount >= 3 (not 2) keeps the velocity signal off 2-comp noise.
+  const pool = deduped
+    .filter((c) => c.net > 0 && c.soldCount >= 3)
     .sort(
       (a, b) => demandScore(b.net, b.soldCount) - demandScore(a.net, a.soldCount),
     )
-    .slice(0, 15); // cap the expensive competition pass
+    .slice(0, 20);
 
   const seKey = process.env.SERPAPI_KEY;
   if (seKey) {
     await Promise.all(
-      winners.map(async (c) => {
+      pool.map(async (c) => {
         const active = await ebayActive(cleanQuery(c.title), seKey);
-        c.competition = active;
-        c.sellThrough =
-          c.soldCount + active > 0
-            ? Math.round((c.soldCount / (c.soldCount + active)) * 100)
-            : undefined;
+        if (active != null) c.competition = active;
       }),
     );
   }
 
-  winners.sort((a, b) => composite(b) - composite(a));
+  const winners = pool
+    .sort((a, b) => composite(b) - composite(a))
+    .slice(0, 15);
   return { winners, scanned: deduped.length, seeds };
 }

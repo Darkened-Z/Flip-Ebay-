@@ -12,8 +12,7 @@ export type Candidate = {
   marginPct: number;
   isPrime: boolean;
   worth: boolean;
-  competition?: number; // active eBay listings (lower = easier to sell)
-  sellThrough?: number; // sold / (sold + active), %
+  competition?: number; // total active eBay listings for the query (lower = easier to sell)
   source?: "search" | "deal";
 };
 
@@ -38,8 +37,9 @@ type DealRow = {
   title?: string;
   image?: string;
   link?: string;
-  deal_price?: { value?: number };
-  current_price?: { value?: number };
+  deal_price?: { value?: number }; // promotional/lightning price (temporary)
+  current_price?: { value?: number }; // current buy price
+  list_price?: { value?: number }; // regular/strikethrough price
 };
 type SoldRow = { price?: { extracted?: number }; condition?: string; title?: string };
 
@@ -49,6 +49,15 @@ async function getJson(url: string): Promise<Record<string, unknown>> {
   return (await r.json()) as Record<string, unknown>;
 }
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// eBay take rate + per-order fixed fee, plus a conservative flat outbound
+// shipping cost the seller absorbs to sell quickly at the low-end comp price.
+// Tune EST_SHIP_COST if you ship heavier/lighter parcels or pass shipping to
+// the buyer — it is deliberately conservative so thin "winners" that are really
+// break-even get filtered out rather than shown to the client.
+const EBAY_FEE_RATE = 0.136;
+const EBAY_FEE_FIXED = 0.3;
+const EST_SHIP_COST = 5;
 
 export function demandScore(net: number, soldCount: number): number {
   return net * (1 + Math.min(soldCount, 20) / 5);
@@ -97,31 +106,46 @@ function keyTokens(title: string): string[] {
     .slice(0, 6);
 }
 
-const isNewCond = (c?: string) =>
-  /\bnew\b/i.test(c ?? "") && !/used|parts|refurb|pre-?owned/i.test(c ?? "");
+// Treat a comp as off-limits only if it is EXPLICITLY a non-new condition.
+// Missing/unknown condition strings are kept (eBay frequently omits them), but
+// we never price a new-on-Amazon flip off used/refurb/parts sold comps.
+const isUsedCond = (c?: string) =>
+  /(used|refurb|pre-?owned|for parts|parts only|open box|seller refurbished|acceptable)/i.test(
+    c ?? "",
+  );
 
-// Sold comps → quick-sale price + count, filtered to NEW and (when a reference
-// title is given) to listings that actually match the product (token overlap).
+// Whole-word token match so "case" doesn't match "staircase".
+const wordHit = (haystack: string, token: string) =>
+  new RegExp(`\\b${token}\\b`).test(haystack);
+
+// Sold comps → quick-sale price + count. Comps are restricted to listings that
+// (a) are NOT explicitly used/refurb and (b) actually match the product by
+// whole-word token overlap with the reference title. We do NOT fall back to a
+// noisy unfiltered basket: if too few genuine matches remain the count stays
+// low and the candidate fails the downstream velocity gates — a missed find is
+// acceptable, a false winner is not.
 async function ebaySold(
   query: string,
   seKey: string,
   refTitle?: string,
 ): Promise<{ price: number; soldCount: number }> {
+  if (!query.trim()) return { price: 0, soldCount: 0 };
   try {
     const e = await getJson(
       `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete&api_key=${seKey}`,
     );
     const results = (e.organic_results as SoldRow[]) ?? [];
-    let chosen = results.filter((r) => isNewCond(r.condition));
-    if (chosen.length === 0) chosen = results;
+    let chosen = results.filter((r) => !isUsedCond(r.condition));
 
     if (refTitle) {
       const toks = keyTokens(refTitle);
-      const rel = chosen.filter((r) => {
-        const t = String(r.title ?? "").toLowerCase();
-        return toks.filter((k) => t.includes(k)).length >= 2;
-      });
-      if (rel.length >= 3) chosen = rel; // only tighten if enough remain
+      if (toks.length > 0) {
+        const need = Math.min(2, toks.length);
+        chosen = chosen.filter((r) => {
+          const t = String(r.title ?? "").toLowerCase();
+          return toks.filter((k) => wordHit(t, k)).length >= need;
+        });
+      }
     }
 
     const prices = chosen
@@ -133,17 +157,22 @@ async function ebaySold(
   }
 }
 
-// Active eBay listings for a query — a competition proxy.
-export async function ebayActive(query: string, seKey: string): Promise<number> {
+// Total active eBay listings for a query — a competition proxy. Returns null
+// (not 0) when the count is unavailable, so a failed/empty lookup is never
+// mistaken for "zero competition" (which would fake a perfect sell-through).
+export async function ebayActive(
+  query: string,
+  seKey: string,
+): Promise<number | null> {
+  if (!query.trim()) return null;
   try {
     const e = await getJson(
       `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&api_key=${seKey}`,
     );
     const info = e.search_information as { total_results?: number } | undefined;
-    if (typeof info?.total_results === "number") return info.total_results;
-    return ((e.organic_results as unknown[]) ?? []).length;
+    return typeof info?.total_results === "number" ? info.total_results : null;
   } catch {
-    return 0;
+    return null;
   }
 }
 
@@ -172,7 +201,9 @@ function toCandidate(
   ebay: { price: number; soldCount: number },
   source: "search" | "deal",
 ): Candidate {
-  const fees = round2(ebay.price * 0.136 + 0.3);
+  const fees = round2(
+    ebay.price * EBAY_FEE_RATE + EBAY_FEE_FIXED + EST_SHIP_COST,
+  );
   const net = round2(ebay.price - amazonPrice - fees);
   return {
     asin,
@@ -197,7 +228,13 @@ export async function searchCandidates(
   pages = 2,
 ): Promise<Candidate[]> {
   const { rfKey, seKey } = keys();
-  if (!rfKey || !seKey) return mockCandidates(term, limit);
+  // Never fabricate "winners" in production: with no keys, return nothing rather
+  // than mock data the client could mistake for real finds. Mocks stay for dev.
+  if (!rfKey || !seKey) {
+    return process.env.NODE_ENV === "production"
+      ? []
+      : mockCandidates(term, limit);
+  }
 
   const pageResults = await Promise.all(
     Array.from({ length: pages }, (_, i) =>
@@ -225,7 +262,8 @@ export async function searchCandidates(
       const asin = r.asin;
       const title = r.title;
       const amazonPrice = r.price?.value;
-      if (!asin || !title || typeof amazonPrice !== "number") return null;
+      if (!asin || !title || typeof amazonPrice !== "number" || amazonPrice <= 0)
+        return null;
       const ebay = await ebaySold(cleanQuery(title), seKey, title);
       return toCandidate(
         asin,
@@ -258,8 +296,12 @@ export async function dealsCandidates(limit: number): Promise<Candidate[]> {
       rows.map(async (r): Promise<Candidate | null> => {
         const asin = r.asin;
         const title = r.title;
-        const amazonPrice = r.deal_price?.value ?? r.current_price?.value;
-        if (!asin || !title || typeof amazonPrice !== "number") return null;
+        // Anchor on the current/regular price, not the temporary lightning
+        // deal price, so net reflects a cost the operator can still source at.
+        const amazonPrice =
+          r.current_price?.value ?? r.list_price?.value ?? r.deal_price?.value;
+        if (!asin || !title || typeof amazonPrice !== "number" || amazonPrice <= 0)
+          return null;
         const ebay = await ebaySold(cleanQuery(title), seKey, title);
         return toCandidate(
           asin,
@@ -284,7 +326,9 @@ function mockCandidates(term: string, limit: number): Candidate[] {
     .map((_, i) => {
       const amazonPrice = round2(12 + i * 3.5);
       const ebayPrice = round2(amazonPrice + 14 - i * 2);
-      const fees = round2(ebayPrice * 0.136 + 0.3);
+      const fees = round2(
+        ebayPrice * EBAY_FEE_RATE + EBAY_FEE_FIXED + EST_SHIP_COST,
+      );
       const net = round2(ebayPrice - amazonPrice - fees);
       const soldCount = 14 - i;
       return {
