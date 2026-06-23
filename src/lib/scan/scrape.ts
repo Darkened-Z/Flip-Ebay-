@@ -12,23 +12,23 @@ export function hasApify(): boolean {
 }
 
 // Run an eBay-sold Apify actor synchronously and return its dataset items.
-// Default actor: ebay-sold-lite (input { query, maxItems, soldWithinDays };
-// soldWithinDays=30 means the items it returns ARE the last-30-day sales).
-// Returns null on no-token / failure so callers can fall back.
+// Default actor: caffein.dev/ebay-sold-listings — it uses real proxies (the
+// lighter actors get 403-blocked by eBay) and returns soldPrice/title/endedAt/
+// condition/listingType. Input: keywords[] + count + daysToScrape (30-day
+// window = our velocity window). Returns null on no-token / failure to fall back.
 export async function apifyEbaySold(
   query: string,
 ): Promise<Record<string, unknown>[] | null> {
   const token = process.env.APIFY_TOKEN;
   if (!token) return null;
-  const actor =
-    process.env.APIFY_ACTOR ?? "astronomical_reception~ebay-sold-lite";
+  const actor = process.env.APIFY_ACTOR ?? "caffein.dev~ebay-sold-listings";
   try {
     const r = await fetch(
       `${APIFY_ACTS}/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, maxItems: 30, soldWithinDays: 30 }),
+        body: JSON.stringify({ keywords: [query], count: 20, daysToScrape: 30 }),
       },
     );
     if (!r.ok) return null;
