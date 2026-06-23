@@ -1,7 +1,13 @@
 import { quickSalePrice } from "./pricing";
 import { isRestricted } from "@/lib/sourcing/restricted";
 import { isExcludedCategory } from "@/lib/sourcing/excluded";
-import { hasScraper, scrapeFetch, decodeEntities } from "./scrape";
+import {
+  hasApify,
+  apifyEbaySold,
+  hasScraper,
+  scrapeFetch,
+  decodeEntities,
+} from "./scrape";
 
 export type Candidate = {
   asin: string;
@@ -205,15 +211,47 @@ function parseEbaySoldHtml(html: string): SoldRow[] {
   return rows;
 }
 
-// Sold comps. Preferred path: scrape eBay's own sold-search page for free (no
-// per-call quota). LH_BIN=1 keeps it Buy-It-Now, LH_PrefLoc=1 US — both honored
-// on the real site. Falls back to SerpApi only if no scraper key is configured.
+// Map an Apify eBay-sold actor's dataset items into comp rows. Tolerates the
+// common field-name variants across actors and drops the summary record.
+function apifyItemsToRows(items: Record<string, unknown>[]): SoldRow[] {
+  const numOf = (v: unknown): number | undefined => {
+    if (typeof v === "number") return v;
+    if (typeof v === "string") {
+      const n = Number(v.replace(/[^0-9.]/g, ""));
+      return Number.isFinite(n) ? n : undefined;
+    }
+    return undefined;
+  };
+  const strOf = (v: unknown): string | undefined =>
+    typeof v === "string" ? v : undefined;
+  return items
+    .filter((it) => it.type !== "summary")
+    .map((it): SoldRow => {
+      const price = numOf(it.soldPrice ?? it.price ?? it.salePrice);
+      const lt = String(it.listingType ?? it.buying_format ?? "").toLowerCase();
+      return {
+        title: strOf(it.title),
+        price: typeof price === "number" && price > 0 ? { extracted: price } : undefined,
+        sold_date: strOf(it.saleEndDate ?? it.endedAt ?? it.sold_date),
+        condition: strOf(it.condition),
+        buying_format: lt.includes("auction") ? "auction" : undefined,
+      };
+    });
+}
+
+// Sold comps, in priority order: Apify actor (clean JSON, preferred) → ScraperAPI
+// (scrape eBay's sold page, LH_BIN + LH_PrefLoc honored) → SerpApi (fallback,
+// only while it has quota). All feed the same filtering/velocity/pricing.
 async function ebaySold(
   query: string,
   seKey: string | undefined,
   refTitle?: string,
 ): Promise<{ price: number; soldCount: number }> {
   if (!query.trim()) return { price: 0, soldCount: 0 };
+  if (hasApify()) {
+    const items = await apifyEbaySold(query);
+    if (items) return computeSold(apifyItemsToRows(items), refTitle);
+  }
   if (hasScraper()) {
     const url = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1&LH_Complete=1&LH_BIN=1&LH_PrefLoc=1&_ipg=60`;
     const html = await scrapeFetch(url);
@@ -329,7 +367,7 @@ export async function searchCandidates(
   // Need Amazon data (Rainforest) + an eBay source (scraper or SerpApi). Never
   // fabricate "winners" in production: with no keys, return nothing rather than
   // mock data the client could mistake for real finds. Mocks stay for dev.
-  if (!rfKey || (!seKey && !hasScraper())) {
+  if (!rfKey || (!seKey && !hasScraper() && !hasApify())) {
     return process.env.NODE_ENV === "production"
       ? []
       : mockCandidates(term, limit);
@@ -404,7 +442,7 @@ export async function searchCandidates(
 // Amazon "today's deals" feed → per-product eBay sold check → candidates.
 export async function dealsCandidates(limit: number): Promise<Candidate[]> {
   const { rfKey, seKey } = keys();
-  if (!rfKey || (!seKey && !hasScraper())) return [];
+  if (!rfKey || (!seKey && !hasScraper() && !hasApify())) return [];
   try {
     const d = await getJson(
       `${RAINFOREST}?api_key=${rfKey}&type=deals&amazon_domain=amazon.com`,
