@@ -84,6 +84,7 @@ export function DiscoverClient({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
+  const [nearMisses, setNearMisses] = useState<Candidate[]>([]);
   const [related, setRelated] = useState<string[]>([]);
   const [info, setInfo] = useState<string | null>(null);
   const [saved, setSaved] = useState<number | null>(null);
@@ -102,9 +103,12 @@ export function DiscoverClient({
       return;
     }
     setCandidates(res.winners);
+    setNearMisses(res.nearMisses ?? []);
     if (res.saved > 0) setSaved(res.saved);
     setInfo(
-      `Found ${res.winners.length} winner${res.winners.length === 1 ? "" : "s"} from ${res.scanned} products${res.saved > 0 ? ` · saved to your Finds tab` : ""}. Categories: ${res.seeds.join(", ")}`,
+      res.winners.length > 0
+        ? `Found ${res.winners.length} winner${res.winners.length === 1 ? "" : "s"} from ${res.scanned} products${res.saved > 0 ? " · saved to your Finds tab" : ""}. Categories: ${res.seeds.join(", ")}`
+        : `No profitable flips in ${res.scanned} products this run — these categories have little Amazon→eBay spread. Closest matches below. Categories: ${res.seeds.join(", ")}`,
     );
   }
 
@@ -123,6 +127,7 @@ export function DiscoverClient({
       return;
     }
     setCandidates(res.candidates);
+    setNearMisses([]);
     setRelated(res.related);
   }
 
@@ -155,7 +160,7 @@ export function DiscoverClient({
             <IconRadar2 size={20} /> Hunt products for me
           </div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,.9)", marginTop: 4, lineHeight: 1.5 }}>
-            FLIP picks the categories, finds Prime products on Amazon, and keeps
+            FLIP scans Amazon&apos;s deals and trending categories, and keeps
             only the ones selling higher on eBay. No searching needed.
           </div>
         </div>
@@ -254,8 +259,8 @@ export function DiscoverClient({
       </div>
 
       <div style={{ marginTop: 8, fontSize: 12, color: "var(--color-faint)" }}>
-        Ranked by eBay demand (sell velocity) × profit. A hunt uses ~6 lookups
-        per category.
+        Ranked by profit × eBay demand. Leans on Amazon&apos;s deals feed, where
+        the real spread is. Costs ~3 eBay lookups per category + the deals batch.
       </div>
 
       {/* Seasonal seeds */}
@@ -422,22 +427,43 @@ export function DiscoverClient({
           </div>
         </div>
       ) : candidates ? (
-        <div
-          style={{
-            marginTop: 18,
-            padding: 40,
-            textAlign: "center",
-            background: "var(--color-surface)",
-            borderRadius: 16,
-            boxShadow: "0 1px 3px rgba(0,0,0,.05)",
-            color: "var(--color-faint)",
-          }}
-        >
-          {info ?? "No profitable products found this run."}
-          <div style={{ marginTop: 6, fontSize: 12 }}>
-            Try more categories, or run again — FLIP explores different ground
-            each time.
+        <div style={{ marginTop: 16 }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--color-muted)",
+              marginBottom: 10,
+            }}
+          >
+            {info ?? "No profitable products found this run."}
           </div>
+          {nearMisses.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {nearMisses.map((c) => (
+                <CandidateRow
+                  key={c.asin}
+                  c={c}
+                  onScan={() => router.push(`/?url=${encodeURIComponent(c.link)}`)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: 40,
+                textAlign: "center",
+                background: "var(--color-surface)",
+                borderRadius: 16,
+                boxShadow: "0 1px 3px rgba(0,0,0,.05)",
+                color: "var(--color-faint)",
+                fontSize: 12,
+              }}
+            >
+              Try more categories, or run again — FLIP explores different ground
+              each time.
+            </div>
+          )}
         </div>
       ) : null}
     </>

@@ -50,6 +50,7 @@ type DealRow = {
   deal_price?: { value?: number }; // promotional/lightning price (temporary)
   current_price?: { value?: number }; // current buy price
   list_price?: { value?: number }; // regular/strikethrough price
+  percent_off?: number; // discount depth — a free spread proxy
 };
 type SoldRow = {
   price?: { extracted?: number };
@@ -335,18 +336,33 @@ export async function dealsCandidates(limit: number): Promise<Candidate[]> {
     const d = await getJson(
       `${RAINFOREST}?api_key=${rfKey}&type=deals&amazon_domain=amazon.com`,
     );
-    const rows = ((d.deals_results as DealRow[]) ?? []).slice(0, limit);
+    // The deals feed returns ~30 discounted items. Free-filter, then rank by
+    // discount depth (the bigger the markdown, the likelier it beats the eBay
+    // sold price), and only eBay-check the top few.
+    const dealCost = (r: DealRow) =>
+      r.current_price?.value ?? r.list_price?.value ?? r.deal_price?.value;
+    const shortlist = ((d.deals_results as DealRow[]) ?? [])
+      .filter((r) => {
+        const price = dealCost(r);
+        return (
+          !!r.asin &&
+          !!r.title &&
+          typeof price === "number" &&
+          price > 0 &&
+          !isRestricted(r.title) &&
+          !isExcludedCategory(r.title)
+        );
+      })
+      .sort((a, b) => (b.percent_off ?? 0) - (a.percent_off ?? 0))
+      .slice(0, limit);
     const candidates = await Promise.all(
-      rows.map(async (r): Promise<Candidate | null> => {
+      shortlist.map(async (r): Promise<Candidate | null> => {
         const asin = r.asin;
         const title = r.title;
         // Anchor on the current/regular price, not the temporary lightning
         // deal price, so net reflects a cost the operator can still source at.
-        const amazonPrice =
-          r.current_price?.value ?? r.list_price?.value ?? r.deal_price?.value;
-        if (!asin || !title || typeof amazonPrice !== "number" || amazonPrice <= 0)
-          return null;
-        if (isRestricted(title) || isExcludedCategory(title)) return null;
+        const amazonPrice = dealCost(r);
+        if (!asin || !title || typeof amazonPrice !== "number") return null;
         const ebay = await ebaySold(cleanQuery(title), seKey, title);
         return toCandidate(
           asin,

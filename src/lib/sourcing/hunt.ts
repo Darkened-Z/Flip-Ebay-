@@ -10,6 +10,7 @@ import { buildHuntSeeds } from "./seeds";
 
 export type HuntResult = {
   winners: Candidate[];
+  nearMisses: Candidate[]; // closest profitable-ish candidates when winners are thin
   scanned: number;
   seeds: string[];
 };
@@ -41,7 +42,9 @@ export async function runHunt(
     ...seeds.map((s) =>
       searchCandidates(s, perSeed, pages).catch(() => [] as Candidate[]),
     ),
-    dealsCandidates(perSeed).catch(() => [] as Candidate[]),
+    // Lean toward the deals feed — discounted items are the likeliest to have
+    // real Amazon -> eBay spread, far more than commodity category searches.
+    dealsCandidates(perSeed * 2).catch(() => [] as Candidate[]),
   ]);
 
   const byAsin = new Map<string, Candidate>();
@@ -80,5 +83,15 @@ export async function runHunt(
   const winners = pool
     .sort((a, b) => composite(b) - composite(a))
     .slice(0, 15);
-  return { winners, scanned: deduped.length, seeds };
+
+  // When winners are thin, surface the closest real products (some sold history,
+  // best net) so a run is never an unhelpful blank — even if they currently sell
+  // for less on eBay, they show the user the tool worked and what it found.
+  const winnerAsins = new Set(winners.map((c) => c.asin));
+  const nearMisses = deduped
+    .filter((c) => !winnerAsins.has(c.asin) && c.soldCount >= 2)
+    .sort((a, b) => b.net - a.net)
+    .slice(0, 6);
+
+  return { winners, nearMisses, scanned: deduped.length, seeds };
 }

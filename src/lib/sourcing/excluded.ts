@@ -22,7 +22,8 @@ const COSMETICS = [
   "facial serum", "vitamin c serum", "hyaluronic serum", "facial moisturizer",
   "night cream", "eye cream", "anti-aging cream", "retinol cream", "sunscreen",
   "sunblock", "self tanner", "face wash", "facial cleanser", "face toner",
-  "sheet mask", "makeup remover", "micellar water", "perfume", "eau de parfum",
+  "sheet mask", "toner pad", "toner pads", "makeup remover", "micellar water",
+  "perfume", "eau de parfum",
   "eau de toilette", "cologne", "fragrance mist",
 ];
 

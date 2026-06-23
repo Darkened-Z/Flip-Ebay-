@@ -24,7 +24,13 @@ export async function discoverAction(
 }
 
 export type HuntActionResult =
-  | { winners: Candidate[]; scanned: number; seeds: string[]; saved: number }
+  | {
+      winners: Candidate[];
+      nearMisses: Candidate[];
+      scanned: number;
+      seeds: string[];
+      saved: number;
+    }
   | { error: string };
 
 export async function huntAction(
