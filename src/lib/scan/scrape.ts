@@ -11,32 +11,60 @@ export function hasApify(): boolean {
   return !!process.env.APIFY_TOKEN;
 }
 
-// Run an eBay-sold Apify actor synchronously and return its dataset items.
-// Default actor: caffein.dev/ebay-sold-listings — it uses real proxies (the
-// lighter actors get 403-blocked by eBay) and returns soldPrice/title/endedAt/
-// condition/listingType. Input: keywords[] + count + daysToScrape (30-day
-// window = our velocity window). Returns null on no-token / failure to fall back.
+// Apify's free plan can't handle many concurrent actor runs — a hunt firing one
+// run per product gets most of them dropped (one succeeds, the rest fail). The
+// real fix is batching many keywords into ONE run; this gate is the backstop.
+let apifyActive = 0;
+const apifyQueue: (() => void)[] = [];
+const MAX_APIFY_CONCURRENT = 2;
+async function withApifyLimit<T>(fn: () => Promise<T>): Promise<T> {
+  if (apifyActive >= MAX_APIFY_CONCURRENT) {
+    await new Promise<void>((resolve) => apifyQueue.push(resolve));
+  }
+  apifyActive++;
+  try {
+    return await fn();
+  } finally {
+    apifyActive--;
+    apifyQueue.shift()?.();
+  }
+}
+
+// Run the eBay-sold actor for MANY keywords in ONE synchronous run; returns all
+// dataset items, each tagged with its `keyword`. Default actor:
+// caffein.dev/ebay-sold-listings — real proxies (lighter actors get 403'd),
+// returns soldPrice/title/endedAt/condition/listingType. count is per keyword;
+// daysToScrape=30 is our velocity window. Returns null on no-token / failure.
+export async function apifyEbaySoldBatch(
+  queries: string[],
+): Promise<Record<string, unknown>[] | null> {
+  const token = process.env.APIFY_TOKEN;
+  if (!token || queries.length === 0) return null;
+  const actor = process.env.APIFY_ACTOR ?? "caffein.dev~ebay-sold-listings";
+  return withApifyLimit(async () => {
+    try {
+      const r = await fetch(
+        `${APIFY_ACTS}/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords: queries, count: 20, daysToScrape: 30 }),
+        },
+      );
+      if (!r.ok) return null;
+      const data = await r.json();
+      return Array.isArray(data) ? (data as Record<string, unknown>[]) : null;
+    } catch {
+      return null;
+    }
+  });
+}
+
+// Single-keyword convenience wrapper.
 export async function apifyEbaySold(
   query: string,
 ): Promise<Record<string, unknown>[] | null> {
-  const token = process.env.APIFY_TOKEN;
-  if (!token) return null;
-  const actor = process.env.APIFY_ACTOR ?? "caffein.dev~ebay-sold-listings";
-  try {
-    const r = await fetch(
-      `${APIFY_ACTS}/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keywords: [query], count: 20, daysToScrape: 30 }),
-      },
-    );
-    if (!r.ok) return null;
-    const data = await r.json();
-    return Array.isArray(data) ? (data as Record<string, unknown>[]) : null;
-  } catch {
-    return null;
-  }
+  return apifyEbaySoldBatch([query]);
 }
 
 export function hasScraper(): boolean {

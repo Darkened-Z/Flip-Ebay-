@@ -4,6 +4,7 @@ import { isExcludedCategory } from "@/lib/sourcing/excluded";
 import {
   hasApify,
   apifyEbaySold,
+  apifyEbaySoldBatch,
   hasScraper,
   scrapeFetch,
   decodeEntities,
@@ -268,6 +269,33 @@ async function ebaySold(
   }
 }
 
+// Sold comps for MANY products at once. With Apify this is ONE actor run for all
+// keywords (the free plan drops most calls if you fire one run per product), then
+// grouped back per product by the echoed `keyword`. Falls back to per-call for
+// the other sources. Results are returned aligned to the input order.
+async function ebaySoldMany(
+  reqs: { query: string; refTitle: string }[],
+): Promise<{ price: number; soldCount: number }[]> {
+  if (reqs.length === 0) return [];
+  if (hasApify()) {
+    const items = await apifyEbaySoldBatch(reqs.map((r) => r.query));
+    if (items) {
+      const byKw = new Map<string, Record<string, unknown>[]>();
+      for (const it of items) {
+        const k = typeof it.keyword === "string" ? it.keyword : "";
+        const arr = byKw.get(k);
+        if (arr) arr.push(it);
+        else byKw.set(k, [it]);
+      }
+      return reqs.map((r) =>
+        computeSold(apifyItemsToRows(byKw.get(r.query) ?? []), r.refTitle),
+      );
+    }
+  }
+  const { seKey } = keys();
+  return Promise.all(reqs.map((r) => ebaySold(r.query, seKey, r.refTitle)));
+}
+
 // Total active eBay listings for a query — a competition proxy. Returns null
 // (not 0) when the count is unavailable, so a failed/empty lookup is never
 // mistaken for "zero competition" (which would fake a perfect sell-through).
@@ -414,13 +442,20 @@ export async function searchCandidates(
     .sort((a, b) => (b.ratings_total ?? 0) - (a.ratings_total ?? 0))
     .slice(0, limit);
 
-  const candidates = await Promise.all(
-    shortlist.map(async (r): Promise<Candidate | null> => {
+  // One batched eBay lookup for the whole shortlist (see ebaySoldMany).
+  const sold = await ebaySoldMany(
+    shortlist.map((r) => ({
+      query: cleanQuery(r.title ?? ""),
+      refTitle: r.title ?? "",
+    })),
+  );
+
+  const candidates = shortlist
+    .map((r, i): Candidate | null => {
       const asin = r.asin;
       const title = r.title;
       const amazonPrice = r.price?.value;
       if (!asin || !title || typeof amazonPrice !== "number") return null;
-      const ebay = await ebaySold(cleanQuery(title), seKey, title);
       return toCandidate(
         asin,
         title,
@@ -428,15 +463,15 @@ export async function searchCandidates(
         r.image ?? null,
         r.link ?? `amazon.com/dp/${asin}`,
         !!r.is_prime,
-        ebay,
+        sold[i],
         "search",
       );
-    }),
-  );
+    })
+    .filter((c): c is Candidate => c !== null);
 
-  return candidates
-    .filter((c): c is Candidate => c !== null)
-    .sort((a, b) => demandScore(b.net, b.soldCount) - demandScore(a.net, a.soldCount));
+  return candidates.sort(
+    (a, b) => demandScore(b.net, b.soldCount) - demandScore(a.net, a.soldCount),
+  );
 }
 
 // Amazon "today's deals" feed → per-product eBay sold check → candidates.
@@ -466,15 +501,21 @@ export async function dealsCandidates(limit: number): Promise<Candidate[]> {
       })
       .sort((a, b) => (b.percent_off ?? 0) - (a.percent_off ?? 0))
       .slice(0, limit);
-    const candidates = await Promise.all(
-      shortlist.map(async (r): Promise<Candidate | null> => {
+    // One batched eBay lookup for the whole shortlist (see ebaySoldMany).
+    const sold = await ebaySoldMany(
+      shortlist.map((r) => ({
+        query: cleanQuery(r.title ?? ""),
+        refTitle: r.title ?? "",
+      })),
+    );
+    return shortlist
+      .map((r, i): Candidate | null => {
         const asin = r.asin;
         const title = r.title;
         // Anchor on the current/regular price, not the temporary lightning
         // deal price, so net reflects a cost the operator can still source at.
         const amazonPrice = dealCost(r);
         if (!asin || !title || typeof amazonPrice !== "number") return null;
-        const ebay = await ebaySold(cleanQuery(title), seKey, title);
         return toCandidate(
           asin,
           title,
@@ -482,12 +523,11 @@ export async function dealsCandidates(limit: number): Promise<Candidate[]> {
           r.image ?? null,
           r.link ?? `amazon.com/dp/${asin}`,
           false,
-          ebay,
+          sold[i],
           "deal",
         );
-      }),
-    );
-    return candidates.filter((c): c is Candidate => c !== null);
+      })
+      .filter((c): c is Candidate => c !== null);
   } catch {
     return [];
   }
