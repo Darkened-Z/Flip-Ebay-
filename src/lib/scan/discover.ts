@@ -24,6 +24,13 @@ export type DiscoverOutput = {
 const RAINFOREST = "https://api.rainforestapi.com/request";
 const SERPAPI = "https://serpapi.com/search";
 
+// eBay item-location filter: US only (verified — SerpApi honors LH_PrefLoc=1).
+const EBAY_US_ONLY = "&LH_PrefLoc=1";
+// Price against fixed-price (Buy It Now / Best Offer) sales, not auctions, whose
+// hammer prices aren't representative. SerpApi ignores LH_BIN for sold listings,
+// so we filter on each result's buying_format instead.
+const isAuctionComp = (f?: string) => f === "auction";
+
 type SearchRow = {
   asin?: string;
   title?: string;
@@ -41,7 +48,13 @@ type DealRow = {
   current_price?: { value?: number }; // current buy price
   list_price?: { value?: number }; // regular/strikethrough price
 };
-type SoldRow = { price?: { extracted?: number }; condition?: string; title?: string };
+type SoldRow = {
+  price?: { extracted?: number };
+  condition?: string;
+  title?: string;
+  buying_format?: string; // buy_it_now | accepts_offers | auction
+  location?: string;
+};
 
 async function getJson(url: string): Promise<Record<string, unknown>> {
   const r = await fetch(url, { cache: "no-store" });
@@ -132,10 +145,13 @@ async function ebaySold(
   if (!query.trim()) return { price: 0, soldCount: 0 };
   try {
     const e = await getJson(
-      `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete&api_key=${seKey}`,
+      `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete${EBAY_US_ONLY}&api_key=${seKey}`,
     );
     const results = (e.organic_results as SoldRow[]) ?? [];
-    let chosen = results.filter((r) => !isUsedCond(r.condition));
+    // US (server-side) + Buy It Now (drop auctions) + not explicitly used.
+    let chosen = results.filter(
+      (r) => !isUsedCond(r.condition) && !isAuctionComp(r.buying_format),
+    );
 
     if (refTitle) {
       const toks = keyTokens(refTitle);
@@ -169,7 +185,7 @@ export async function ebayActive(
   if (!query.trim()) return null;
   try {
     const e = await getJson(
-      `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&api_key=${seKey}`,
+      `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}${EBAY_US_ONLY}&api_key=${seKey}`,
     );
     const info = e.search_information as { total_results?: number } | undefined;
     return typeof info?.total_results === "number" ? info.total_results : null;
@@ -181,7 +197,7 @@ export async function ebayActive(
 async function ebayRelated(query: string, seKey: string): Promise<string[]> {
   try {
     const e = await getJson(
-      `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete&api_key=${seKey}`,
+      `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete${EBAY_US_ONLY}&api_key=${seKey}`,
     );
     const rs = (e.related_searches as { query?: string }[]) ?? [];
     return rs

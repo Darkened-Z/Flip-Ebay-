@@ -70,7 +70,7 @@ export const mockScan: ScanResult = {
     { label: "Ships from\nAmazon", ok: true },
     { label: "Prime\neligible", ok: true },
     { label: "US seller\nBuy It Now", ok: true },
-    { label: "Price stable\n30 days", ok: true },
+    { label: "Has sold\ncomps", ok: true },
     { label: "Not restricted\nbrand", ok: true },
   ],
   pricing: {

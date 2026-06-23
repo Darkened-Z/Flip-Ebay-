@@ -10,7 +10,7 @@ import {
   IconUsers,
   IconTrendingUp,
   IconCheck,
-  IconShieldCheck,
+  IconX,
   IconArrowRight,
   IconExternalLink,
 } from "@tabler/icons-react";
@@ -108,7 +108,7 @@ function Row({ k, v, cost }: { k: string; v: string; cost?: boolean }) {
   );
 }
 
-function Chk({ icon, label }: { icon: React.ReactNode; label: string }) {
+function Chk({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
       style={{
@@ -116,14 +116,14 @@ function Chk({ icon, label }: { icon: React.ReactNode; label: string }) {
         alignItems: "center",
         gap: 6,
         padding: "7px 12px",
-        background: "var(--color-go-soft)",
-        color: "var(--color-flip)",
+        background: ok ? "var(--color-go-soft)" : "var(--color-cost-soft)",
+        color: ok ? "var(--color-flip)" : "var(--color-cost)",
         borderRadius: 9,
         fontSize: 12,
         fontWeight: 600,
       }}
     >
-      {icon} {label}
+      {ok ? <IconCheck size={14} /> : <IconX size={14} />} {label}
     </span>
   );
 }
@@ -146,6 +146,8 @@ export function ScanResultView({
       : s.source.url.startsWith("http")
         ? s.source.url
         : `https://${s.source.url}`;
+  const fbaOk = s.checks.find((c) => /ships from/i.test(c.label))?.ok ?? false;
+  const primeOk = s.checks.find((c) => /prime/i.test(c.label))?.ok ?? false;
 
   return (
     <>
@@ -186,14 +188,21 @@ export function ScanResultView({
                   gap: 5,
                   marginTop: 8,
                   padding: "4px 9px",
-                  background: "var(--color-go-soft)",
-                  color: "var(--color-flip)",
+                  background: fbaOk
+                    ? "var(--color-go-soft)"
+                    : "var(--color-cost-soft)",
+                  color: fbaOk ? "var(--color-flip)" : "var(--color-cost)",
                   borderRadius: 7,
                   fontSize: 11,
                   fontWeight: 600,
                 }}
               >
-                <IconTruck size={13} /> Ships from Amazon · Prime
+                <IconTruck size={13} />{" "}
+                {fbaOk
+                  ? primeOk
+                    ? "Ships from Amazon · Prime"
+                    : "Ships from Amazon"
+                  : "Not Amazon-fulfilled"}
               </span>
               <div style={{ marginTop: 8 }}>
                 <a
@@ -436,10 +445,9 @@ export function ScanResultView({
           alignItems: "center",
         }}
       >
-        <Chk icon={<IconCheck size={14} />} label="Prime eligible" />
-        <Chk icon={<IconCheck size={14} />} label="US seller · Buy It Now" />
-        <Chk icon={<IconCheck size={14} />} label="Price stable 30 days" />
-        <Chk icon={<IconShieldCheck size={14} />} label="Not restricted" />
+        {s.checks.map((c) => (
+          <Chk key={c.label} ok={c.ok} label={c.label.replace(/\n/g, " ")} />
+        ))}
       </div>
 
       <div className="btn-row" style={{ marginTop: 18 }}>

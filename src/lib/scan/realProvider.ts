@@ -101,12 +101,15 @@ export class RainforestSerpApiProvider implements ScanProvider {
     const seUrl =
       `${SERPAPI}?engine=ebay&ebay_domain=ebay.com` +
       `&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete` +
+      `&LH_PrefLoc=1` + // US item location only (verified SerpApi-honored)
       `&api_key=${this.serpApiKey}`;
     const se = await getJson(seUrl);
     const organic = (se.organic_results as AnyObj[] | undefined) ?? [];
 
     const isNew = (c: string) =>
       /\bnew\b/i.test(c) && !/used|parts|refurb|pre-?owned/i.test(c);
+    const isAuction = (f: string) => f === "auction";
+    const isNonUs = (loc: string) => loc !== "" && !/united states/i.test(loc);
     const mapped = organic
       .map((r) => {
         const price =
@@ -120,13 +123,22 @@ export class RainforestSerpApiProvider implements ScanProvider {
           when: when && !isNaN(when.getTime()) ? when : null,
           dateLabel: soldRaw,
           condition: str(r.condition) ?? "",
+          format: str(r.buying_format) ?? "",
+          location: str(r.location) ?? "",
           seller: str(get(r, "seller.username")) ?? str(r.seller) ?? "—",
         };
       })
       .filter((s) => s.price > 0);
+    // US item location (server LH_PrefLoc=1) + Buy It Now / Best Offer, i.e. drop
+    // auctions — the comps a US fixed-price flip should actually be priced on.
+    const usBin = mapped.filter(
+      (s) => !isAuction(s.format) && !isNonUs(s.location),
+    );
+    const usBinOk = usBin.length > 0;
+    const basis = usBin.length ? usBin : mapped;
     // Keep only NEW sold comps (we sell new); fall back to all if none tagged.
-    const newOnly = mapped.filter((s) => isNew(s.condition));
-    const sales = newOnly.length ? newOnly : mapped;
+    const newOnly = basis.filter((s) => isNew(s.condition));
+    const sales = newOnly.length ? newOnly : basis;
 
     const prices = sales.map((s) => s.price);
     const med = round2(median(prices));
@@ -137,7 +149,7 @@ export class RainforestSerpApiProvider implements ScanProvider {
     try {
       const actUrl =
         `${SERPAPI}?engine=ebay&ebay_domain=ebay.com` +
-        `&_nkw=${encodeURIComponent(query)}&api_key=${this.serpApiKey}`;
+        `&_nkw=${encodeURIComponent(query)}&LH_PrefLoc=1&api_key=${this.serpApiKey}`;
       const act = await getJson(actUrl);
       activeCount =
         num(get(act, "search_information.total_results")) ??
@@ -222,7 +234,7 @@ export class RainforestSerpApiProvider implements ScanProvider {
       checks: [
         { label: "Ships from\nAmazon", ok: isFba },
         { label: "Prime\neligible", ok: isPrime },
-        { label: "US seller\nBuy It Now", ok: true },
+        { label: "US seller\nBuy It Now", ok: usBinOk },
         { label: "Has sold\ncomps", ok: soldCount > 0 },
         { label: "Not restricted\nbrand", ok: !isRestricted(title, brand) },
       ],
