@@ -1,5 +1,8 @@
 import {
   searchCandidates,
+  dealsCandidates,
+  ebayActive,
+  cleanQuery,
   demandScore,
   type Candidate,
 } from "@/lib/scan/discover";
@@ -11,21 +14,30 @@ export type HuntResult = {
   seeds: string[];
 };
 
-// Autonomous product hunt: FLIP picks the categories itself, scans Amazon
-// products, checks each against eBay sold comps, and returns only the ones
-// that pass the filters — Prime/ships-from-Amazon AND profitable AND actually
-// selling on eBay.
+// Profit × velocity, boosted by sell-through (low competition sells faster).
+function composite(c: Candidate): number {
+  const base = demandScore(c.net, c.soldCount);
+  const st = c.sellThrough ?? 50;
+  return base * (0.5 + st / 100);
+}
+
+// Autonomous hunt: FLIP picks categories itself, scans Amazon search (2 pages)
+// + today's deals, checks each against eBay sold comps, and returns the ones
+// selling higher on eBay. The top winners also get a competition / sell-through
+// pass so low-competition fast sellers rank highest.
 export async function runHunt(
   seedCount = 4,
   perSeed = 6,
 ): Promise<HuntResult> {
   const seeds = buildHuntSeeds(new Date(), seedCount);
 
-  const batches = await Promise.all(
-    seeds.map((s) => searchCandidates(s, perSeed).catch(() => [] as Candidate[])),
-  );
+  const batches = await Promise.all([
+    ...seeds.map((s) =>
+      searchCandidates(s, perSeed, 2).catch(() => [] as Candidate[]),
+    ),
+    dealsCandidates(perSeed).catch(() => [] as Candidate[]),
+  ]);
 
-  // Dedupe across seeds by ASIN, keeping the strongest score.
   const byAsin = new Map<string, Candidate>();
   for (const c of batches.flat()) {
     const prev = byAsin.get(c.asin);
@@ -38,15 +50,27 @@ export async function runHunt(
   }
   const deduped = [...byAsin.values()];
 
-  // Keep products that sell higher on eBay than they cost (positive net) AND
-  // have real eBay demand (2+ sold). The ships-from-Amazon / Prime check runs
-  // at the deep Scan, where the data is reliable (search-result is_prime is
-  // not). The strongest are flagged "worth it" on the card (net >= $5, 3+ sold).
-  const winners = deduped
+  let winners = deduped
     .filter((c) => c.net > 0 && c.soldCount >= 2)
     .sort(
       (a, b) => demandScore(b.net, b.soldCount) - demandScore(a.net, a.soldCount),
-    );
+    )
+    .slice(0, 15); // cap the expensive competition pass
 
+  const seKey = process.env.SERPAPI_KEY;
+  if (seKey) {
+    await Promise.all(
+      winners.map(async (c) => {
+        const active = await ebayActive(cleanQuery(c.title), seKey);
+        c.competition = active;
+        c.sellThrough =
+          c.soldCount + active > 0
+            ? Math.round((c.soldCount / (c.soldCount + active)) * 100)
+            : undefined;
+      }),
+    );
+  }
+
+  winners.sort((a, b) => composite(b) - composite(a));
   return { winners, scanned: deduped.length, seeds };
 }

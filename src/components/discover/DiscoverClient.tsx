@@ -40,6 +40,8 @@ function exportCsv(rows: Candidate[]) {
     "Net Profit",
     "Margin %",
     "Prime",
+    "Competition",
+    "Sell-through %",
     "Worth Listing",
   ];
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
@@ -56,6 +58,8 @@ function exportCsv(rows: Candidate[]) {
         c.net.toFixed(2),
         c.marginPct,
         c.isPrime ? "yes" : "no",
+        c.competition ?? "",
+        c.sellThrough ?? "",
         c.worth ? "yes" : "no",
       ].join(","),
     );
@@ -502,6 +506,8 @@ function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
             }}
           >
             Amazon ${c.amazonPrice.toFixed(2)} · eBay ${c.ebayPrice.toFixed(2)} · {c.soldCount} sold
+            {c.sellThrough != null ? ` · ${c.sellThrough}% sell-through` : ""}
+            {c.competition != null ? ` · ${c.competition} competing` : ""}
           </span>
           {c.isPrime ? (
             <span
@@ -515,6 +521,20 @@ function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
               }}
             >
               Prime
+            </span>
+          ) : null}
+          {c.source === "deal" ? (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: "var(--color-amber-ink)",
+                background: "var(--color-amber-soft)",
+                padding: "1px 6px",
+                borderRadius: 5,
+              }}
+            >
+              Deal
             </span>
           ) : null}
           <a
