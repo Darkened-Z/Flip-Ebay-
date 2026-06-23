@@ -1,6 +1,7 @@
 import { quickSalePrice } from "./pricing";
 import { isRestricted } from "@/lib/sourcing/restricted";
 import { isExcludedCategory } from "@/lib/sourcing/excluded";
+import { hasScraper, scrapeFetch, decodeEntities } from "./scrape";
 
 export type Candidate = {
   asin: string;
@@ -138,60 +139,92 @@ const isUsedCond = (c?: string) =>
 const wordHit = (haystack: string, token: string) =>
   new RegExp(`\\b${token}\\b`).test(haystack);
 
-// Sold comps → quick-sale price + count. Comps are restricted to listings that
-// (a) are NOT explicitly used/refurb and (b) actually match the product by
-// whole-word token overlap with the reference title. We do NOT fall back to a
-// noisy unfiltered basket: if too few genuine matches remain the count stays
-// low and the candidate fails the downstream velocity gates — a missed find is
-// acceptable, a false winner is not.
+// Filter + price a set of raw sold comps. Restricted to listings that are NOT
+// explicitly used/refurb, not auctions, and (with a reference title) that match
+// the product by whole-word token overlap — 2 tokens, precise but not so strict
+// it starves the count. soldCount is the number sold in the LAST 30 DAYS (real
+// recent velocity, since eBay's sold view reaches back ~a year); price is the
+// quick-sale (~25th pct) of those recent comps, or of all matches if the recent
+// sample is thin. No fallback to a noisy basket — a missed find beats a false one.
+function computeSold(
+  rows: SoldRow[],
+  refTitle?: string,
+): { price: number; soldCount: number } {
+  let chosen = rows.filter(
+    (r) => !isUsedCond(r.condition) && !isAuctionComp(r.buying_format),
+  );
+  if (refTitle) {
+    const toks = keyTokens(refTitle);
+    if (toks.length > 0) {
+      const need = Math.min(2, toks.length);
+      chosen = chosen.filter((r) => {
+        const t = String(r.title ?? "").toLowerCase();
+        return toks.filter((k) => wordHit(t, k)).length >= need;
+      });
+    }
+  }
+  const now = Date.now();
+  const soldWithin30 = (raw?: string) => {
+    const t = raw ? new Date(raw).getTime() : NaN;
+    return !Number.isNaN(t) && now - t <= 30 * 86_400_000;
+  };
+  const recent = chosen.filter((r) => soldWithin30(r.sold_date));
+  const priceFrom = recent.length >= 3 ? recent : chosen;
+  const prices = priceFrom
+    .map((x) => x.price?.extracted)
+    .filter((p): p is number => typeof p === "number" && p > 0);
+  return { price: quickSalePrice(prices), soldCount: recent.length };
+}
+
+// Parse eBay's public sold-search HTML into comp rows. The results page renders
+// each listing in an `s-item` block (the first is a placeholder we skip).
+function parseEbaySoldHtml(html: string): SoldRow[] {
+  const rows: SoldRow[] = [];
+  const blocks = html.split('class="s-item__info');
+  for (let i = 1; i < blocks.length; i++) {
+    const b = blocks[i].slice(0, 1500);
+    const titleRaw = b.match(
+      /s-item__title[^>]*>(?:<span[^>]*>)?([^<]{3,120})/,
+    )?.[1];
+    if (!titleRaw) continue;
+    const title = decodeEntities(titleRaw);
+    if (!title || /shop on ebay/i.test(title)) continue;
+    const priceRaw = b.match(
+      /s-item__price[^>]*>(?:<[^>]+>)*\s*\$([\d,]+\.\d{2})/,
+    )?.[1];
+    const extracted = priceRaw ? Number(priceRaw.replace(/,/g, "")) : undefined;
+    const soldDate = b.match(/Sold\s+([A-Z][a-z]{2}\s+\d{1,2},?\s*\d{4})/)?.[1];
+    const condition = b.match(/SECONDARY_INFO[^>]*>([^<]{3,40})/)?.[1];
+    rows.push({
+      title,
+      price: typeof extracted === "number" ? { extracted } : undefined,
+      sold_date: soldDate,
+      condition: condition ? decodeEntities(condition) : undefined,
+    });
+  }
+  return rows;
+}
+
+// Sold comps. Preferred path: scrape eBay's own sold-search page for free (no
+// per-call quota). LH_BIN=1 keeps it Buy-It-Now, LH_PrefLoc=1 US — both honored
+// on the real site. Falls back to SerpApi only if no scraper key is configured.
 async function ebaySold(
   query: string,
-  seKey: string,
+  seKey: string | undefined,
   refTitle?: string,
 ): Promise<{ price: number; soldCount: number }> {
   if (!query.trim()) return { price: 0, soldCount: 0 };
+  if (hasScraper()) {
+    const url = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1&LH_Complete=1&LH_BIN=1&LH_PrefLoc=1&_ipg=60`;
+    const html = await scrapeFetch(url);
+    if (html) return computeSold(parseEbaySoldHtml(html), refTitle);
+  }
+  if (!seKey) return { price: 0, soldCount: 0 };
   try {
     const e = await getJson(
       `${SERPAPI}?engine=ebay&ebay_domain=ebay.com&_nkw=${encodeURIComponent(query)}&show_only=Sold,Complete${EBAY_US_ONLY}&api_key=${seKey}`,
     );
-    const results = (e.organic_results as SoldRow[]) ?? [];
-    // US (server-side) + Buy It Now (drop auctions) + not explicitly used.
-    let chosen = results.filter(
-      (r) => !isUsedCond(r.condition) && !isAuctionComp(r.buying_format),
-    );
-
-    if (refTitle) {
-      const toks = keyTokens(refTitle);
-      if (toks.length > 0) {
-        // Need 2 whole-word token matches (or all tokens, if the title has
-        // fewer). Whole-word keeps it precise (no "staircase" for "case"), but
-        // staying at 2 lets a generic comp ("American Flag 3x5") match a
-        // branded product ("Anley American Flag") on its real category words —
-        // requiring more was filtering out legitimate comps and starving the
-        // velocity count.
-        const need = Math.min(2, toks.length);
-        chosen = chosen.filter((r) => {
-          const t = String(r.title ?? "").toLowerCase();
-          return toks.filter((k) => wordHit(t, k)).length >= need;
-        });
-      }
-    }
-
-    // eBay's sold view reaches back ~a year, so a raw comp count overstates how
-    // fast a thing moves. Count only comps sold in the last 30 days — the real
-    // recent velocity — and price off those (falling back to all matches if the
-    // recent sample is too thin to price reliably).
-    const now = Date.now();
-    const soldWithin30 = (raw?: string) => {
-      const t = raw ? new Date(raw).getTime() : NaN;
-      return !Number.isNaN(t) && now - t <= 30 * 86_400_000;
-    };
-    const recent = chosen.filter((r) => soldWithin30(r.sold_date));
-    const priceFrom = recent.length >= 3 ? recent : chosen;
-    const prices = priceFrom
-      .map((x) => x.price?.extracted)
-      .filter((p): p is number => typeof p === "number" && p > 0);
-    return { price: quickSalePrice(prices), soldCount: recent.length };
+    return computeSold((e.organic_results as SoldRow[]) ?? [], refTitle);
   } catch {
     return { price: 0, soldCount: 0 };
   }
@@ -293,9 +326,10 @@ export async function searchCandidates(
   pages = 2,
 ): Promise<Candidate[]> {
   const { rfKey, seKey } = keys();
-  // Never fabricate "winners" in production: with no keys, return nothing rather
-  // than mock data the client could mistake for real finds. Mocks stay for dev.
-  if (!rfKey || !seKey) {
+  // Need Amazon data (Rainforest) + an eBay source (scraper or SerpApi). Never
+  // fabricate "winners" in production: with no keys, return nothing rather than
+  // mock data the client could mistake for real finds. Mocks stay for dev.
+  if (!rfKey || (!seKey && !hasScraper())) {
     return process.env.NODE_ENV === "production"
       ? []
       : mockCandidates(term, limit);
@@ -370,7 +404,7 @@ export async function searchCandidates(
 // Amazon "today's deals" feed → per-product eBay sold check → candidates.
 export async function dealsCandidates(limit: number): Promise<Candidate[]> {
   const { rfKey, seKey } = keys();
-  if (!rfKey || !seKey) return [];
+  if (!rfKey || (!seKey && !hasScraper())) return [];
   try {
     const d = await getJson(
       `${RAINFOREST}?api_key=${rfKey}&type=deals&amazon_domain=amazon.com`,
