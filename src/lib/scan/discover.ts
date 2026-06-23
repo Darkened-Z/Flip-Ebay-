@@ -140,7 +140,9 @@ async function ebaySold(
     if (refTitle) {
       const toks = keyTokens(refTitle);
       if (toks.length > 0) {
-        const need = Math.min(2, toks.length);
+        // Require more matching tokens for longer (more descriptive) titles so a
+        // couple of generic category words can't qualify an unrelated product.
+        const need = Math.min(toks.length, Math.max(2, Math.ceil(toks.length / 2)));
         chosen = chosen.filter((r) => {
           const t = String(r.title ?? "").toLowerCase();
           return toks.filter((k) => wordHit(t, k)).length >= need;
