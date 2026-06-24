@@ -25,6 +25,10 @@ export type Candidate = {
   worth: boolean;
   competition?: number; // total active eBay listings for the query (lower = easier to sell)
   source?: "search" | "deal";
+  // Amazon-side verification (filled for hunt winners; null = couldn't verify).
+  shipsFromAmazon?: boolean | null;
+  inStock?: boolean | null;
+  discounted?: boolean; // current Amazon price well below list (may revert)
 };
 
 export type DiscoverOutput = {

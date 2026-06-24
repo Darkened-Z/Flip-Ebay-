@@ -534,6 +534,12 @@ function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
           >
             Amazon ${c.amazonPrice.toFixed(2)} · eBay ${c.ebayPrice.toFixed(2)} · {c.soldCount} sold/30d
             {c.competition != null ? ` · ${c.competition} competing` : ""}
+            {c.shipsFromAmazon === true
+              ? " · ✓ ships from Amazon"
+              : c.shipsFromAmazon === false
+                ? ` · ⚠ verify seller`
+                : ""}
+            {c.discounted ? " · ⚠ on sale (price may rise)" : ""}
           </span>
           {c.isPrime ? (
             <span

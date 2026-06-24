@@ -140,6 +140,73 @@ export async function amazonSearch(
     .filter((r) => r.asin && r.title && r.price > 0);
 }
 
+export type AmazonDetail = {
+  shipsFromAmazon: boolean | null; // null = unknown (scrape returned nothing)
+  inStock: boolean | null;
+  discounted: boolean; // current price well below list price (may revert)
+  seller: string;
+};
+
+// Fetch Amazon product detail for several ASINs in ONE run (delicious_zebu's
+// product-details actor, input { Params: [asin...] }) to verify the Amazon side:
+// who sells it (ships-from-Amazon), whether it's in stock, and whether the price
+// is a temporary discount. Empty/missing fields stay `null` (unknown) so a flaky
+// scrape never wrongly drops a winner. Returns a map keyed by ASIN.
+export async function amazonDetails(
+  asins: string[],
+): Promise<Map<string, AmazonDetail>> {
+  const out = new Map<string, AmazonDetail>();
+  const token = process.env.APIFY_TOKEN;
+  if (!token || asins.length === 0) return out;
+  const actor =
+    process.env.APIFY_PRODUCT_ACTOR ??
+    "delicious_zebu~amazon-product-details-scraper";
+  const num = (v: unknown) =>
+    typeof v === "number"
+      ? v
+      : typeof v === "string"
+        ? Number(v.replace(/[^0-9.]/g, ""))
+        : NaN;
+  const items = await withApifyLimit(async () => {
+    try {
+      const r = await fetch(
+        `${APIFY_ACTS}/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ Params: asins }),
+        },
+      );
+      if (!r.ok) return null;
+      const d = await r.json();
+      return Array.isArray(d) ? (d as Record<string, unknown>[]) : null;
+    } catch {
+      return null;
+    }
+  });
+  if (!items) return out;
+  for (const it of items) {
+    const asin = typeof it.asin === "string" ? it.asin : "";
+    if (!asin) continue;
+    const seller = typeof it.seller_name === "string" ? it.seller_name : "";
+    const avail = String(it.availability ?? "").toLowerCase();
+    const price = num(it.price);
+    const list = num(it.list_price);
+    out.set(asin, {
+      seller,
+      shipsFromAmazon: seller ? /amazon/i.test(seller) : null,
+      inStock: avail
+        ? !/out of stock|unavailable|currently unavailable/.test(avail)
+        : null,
+      discounted:
+        Number.isFinite(price) && Number.isFinite(list) && list > 0
+          ? price < list * 0.85
+          : false,
+    });
+  }
+  return out;
+}
+
 export function hasScraper(): boolean {
   return !!process.env.SCRAPERAPI_KEY;
 }

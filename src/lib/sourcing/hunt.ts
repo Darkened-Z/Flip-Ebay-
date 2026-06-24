@@ -2,11 +2,11 @@ import {
   searchCandidates,
   dealsCandidates,
   ebayActive,
-  inStockOver,
   cleanQuery,
   demandScore,
   type Candidate,
 } from "@/lib/scan/discover";
+import { amazonDetails } from "@/lib/scan/scrape";
 import { buildHuntSeeds } from "./seeds";
 
 export type HuntResult = {
@@ -83,13 +83,22 @@ export async function runHunt(
 
   const ranked = pool
     .sort((a, b) => composite(b) - composite(a))
-    .slice(0, 10); // cap the per-winner stock calls below
+    .slice(0, 10); // cap the verification batch below
 
-  // Stock pass: drop winners Amazon flags as low/out of stock — no point
-  // surfacing something you can't actually source. One Rainforest product call
-  // each, so it runs only on this final shortlist (best-effort; keeps on error).
-  const stockOk = await Promise.all(ranked.map((c) => inStockOver(c.asin, 10)));
-  const winners = ranked.filter((_, i) => stockOk[i]);
+  // Amazon-side verification in ONE batched product-details run: ships-from-
+  // Amazon (seller), in stock, and whether the price is a temporary discount.
+  // Drop only clear out-of-stock items; unknowns (flaky/empty scrape) pass
+  // through, flagged for the operator to verify rather than silently dropped.
+  const details = await amazonDetails(ranked.map((c) => c.asin));
+  for (const c of ranked) {
+    const d = details.get(c.asin);
+    if (d) {
+      c.shipsFromAmazon = d.shipsFromAmazon;
+      c.inStock = d.inStock;
+      c.discounted = d.discounted;
+    }
+  }
+  const winners = ranked.filter((c) => c.inStock !== false);
 
   // When winners are thin, surface the closest real products (some recent sold
   // history, best net) so a run is never an unhelpful blank.
