@@ -67,6 +67,79 @@ export async function apifyEbaySold(
   return apifyEbaySoldBatch([query]);
 }
 
+export type AmazonRow = {
+  asin: string;
+  title: string;
+  price: number;
+  image: string | null;
+  link: string;
+};
+
+// Amazon product search via Apify (igolaizola/amazon-search, $0.50/1K) — the
+// free Amazon source replacing Rainforest's tiny 100-credit trial. Output fields
+// are id (asin) / name (title) / price / image / url. Goes through the shared
+// concurrency gate. Returns [] on no-token / failure.
+export async function amazonSearch(
+  term: string,
+  maxItems = 20,
+): Promise<AmazonRow[]> {
+  const token = process.env.APIFY_TOKEN;
+  if (!token || !term.trim()) return [];
+  const actor = process.env.APIFY_AMAZON_ACTOR ?? "igolaizola~amazon-search";
+  const num = (v: unknown): number => {
+    if (typeof v === "number") return v;
+    if (typeof v === "string") return Number(v.replace(/[^0-9.]/g, ""));
+    return NaN;
+  };
+  const items = await withApifyLimit(async () => {
+    try {
+      const r = await fetch(
+        `${APIFY_ACTS}/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            search: `https://www.amazon.com/s?k=${encodeURIComponent(term)}`,
+            maxItems,
+          }),
+        },
+      );
+      if (!r.ok) return null;
+      const d = await r.json();
+      return Array.isArray(d) ? (d as Record<string, unknown>[]) : null;
+    } catch {
+      return null;
+    }
+  });
+  if (!items) return [];
+  return items
+    .map((it): AmazonRow => {
+      const priceObj =
+        it.price && typeof it.price === "object"
+          ? (it.price as { value?: unknown }).value
+          : it.price;
+      const asin =
+        (typeof it.asin === "string" && it.asin) ||
+        (typeof it.id === "string" && it.id) ||
+        String(it.url ?? "").match(/\/dp\/([A-Z0-9]{10})/)?.[1] ||
+        "";
+      const price = num(priceObj);
+      return {
+        asin,
+        title:
+          typeof it.name === "string"
+            ? it.name
+            : typeof it.title === "string"
+              ? it.title
+              : "",
+        price: Number.isFinite(price) ? price : 0,
+        image: typeof it.image === "string" ? it.image : null,
+        link: typeof it.url === "string" ? it.url : asin ? `amazon.com/dp/${asin}` : "",
+      };
+    })
+    .filter((r) => r.asin && r.title && r.price > 0);
+}
+
 export function hasScraper(): boolean {
   return !!process.env.SCRAPERAPI_KEY;
 }

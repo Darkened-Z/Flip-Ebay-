@@ -5,6 +5,7 @@ import {
   hasApify,
   apifyEbaySold,
   apifyEbaySoldBatch,
+  amazonSearch,
   hasScraper,
   scrapeFetch,
   decodeEntities,
@@ -397,93 +398,41 @@ function toCandidate(
   };
 }
 
-// Amazon search across `pages` pages → per-product eBay sold check → candidates.
+// Amazon search via Apify → batched eBay sold check → ranked candidates.
+// (Amazon moved off Rainforest, whose free trial is exhausted.) The third arg is
+// kept for call-site compatibility but is no longer used (the actor pages itself).
 export async function searchCandidates(
   term: string,
   limit: number,
-  pages = 2,
+  _pages = 1,
 ): Promise<Candidate[]> {
-  const { rfKey, seKey } = keys();
-  // Need Amazon data (Rainforest) + an eBay source (scraper or SerpApi). Never
-  // fabricate "winners" in production: with no keys, return nothing rather than
-  // mock data the client could mistake for real finds. Mocks stay for dev.
-  if (!rfKey || (!seKey && !hasScraper() && !hasApify())) {
+  // Amazon + eBay both come from Apify now. No token → nothing in production;
+  // mock only in dev so the client never sees fabricated winners.
+  if (!hasApify()) {
     return process.env.NODE_ENV === "production"
       ? []
       : mockCandidates(term, limit);
   }
 
-  const pageResults = await Promise.all(
-    Array.from({ length: pages }, (_, i) =>
-      getJson(
-        `${RAINFOREST}?api_key=${rfKey}&type=search&amazon_domain=amazon.com&search_term=${encodeURIComponent(term)}&page=${i + 1}`,
-      ).catch(() => ({}) as Record<string, unknown>),
-    ),
-  );
-
-  // Mine the FULL result set we already paid Rainforest for (~48/page), not just
-  // the first few. Dedup by ASIN.
-  const seen = new Set<string>();
-  const all: SearchRow[] = [];
-  for (const pr of pageResults) {
-    for (const r of (pr.search_results as SearchRow[]) ?? []) {
-      if (r.asin && !seen.has(r.asin)) {
-        seen.add(r.asin);
-        all.push(r);
-      }
-    }
-  }
-
-  // Free pre-filter (price, gated brands, bad-fit categories) + rank by review
-  // count, then keep only `limit`. An eBay sold lookup costs one call each — the
-  // scarce resource — so spend them on the most promising candidates from the
-  // whole haul (popular products are likeliest to have real eBay demand) rather
-  // than the arbitrary first few the search happened to return.
-  const shortlist = all
-    .filter((r) => {
-      const price = r.price?.value;
-      return (
-        !!r.asin &&
-        !!r.title &&
-        typeof price === "number" &&
-        price > 0 &&
-        !isRestricted(r.title) &&
-        !isExcludedCategory(r.title)
-      );
-    })
-    .sort((a, b) => (b.ratings_total ?? 0) - (a.ratings_total ?? 0))
+  // Pull a pool, drop gated brands + bad-fit categories, keep the top `limit`
+  // (the actor returns in Amazon relevance order; it carries no review counts to
+  // rank by, so relevance order stands in for the old popularity funnel).
+  const rows = await amazonSearch(term, Math.max(limit * 2, 16));
+  const shortlist = rows
+    .filter((r) => !isRestricted(r.title) && !isExcludedCategory(r.title))
     .slice(0, limit);
 
-  // One batched eBay lookup for the whole shortlist (see ebaySoldMany).
   const sold = await ebaySoldMany(
-    shortlist.map((r) => ({
-      query: cleanQuery(r.title ?? ""),
-      refTitle: r.title ?? "",
-    })),
+    shortlist.map((r) => ({ query: cleanQuery(r.title), refTitle: r.title })),
   );
 
-  const candidates = shortlist
-    .map((r, i): Candidate | null => {
-      const asin = r.asin;
-      const title = r.title;
-      const amazonPrice = r.price?.value;
-      if (!asin || !title || typeof amazonPrice !== "number") return null;
-      return toCandidate(
-        asin,
-        title,
-        amazonPrice,
-        r.image ?? null,
-        r.link ?? `amazon.com/dp/${asin}`,
-        !!r.is_prime,
-        sold[i],
-        "search",
-      );
-    })
-    .filter((c): c is Candidate => c !== null);
-
-  return candidates.sort(
-    (a, b) => demandScore(b.net, b.soldCount) - demandScore(a.net, a.soldCount),
-  );
+  return shortlist
+    .map((r, i) =>
+      toCandidate(r.asin, r.title, r.price, r.image, r.link, false, sold[i], "search"),
+    )
+    .sort(
+      (a, b) => demandScore(b.net, b.soldCount) - demandScore(a.net, a.soldCount),
+    );
 }
 
 // Amazon "today's deals" feed → per-product eBay sold check → candidates.

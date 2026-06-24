@@ -1,40 +1,45 @@
 import { getSeasonalSuggestions } from "./seasonal";
 
-// Evergreen, high-velocity reselling categories FLIP hunts across on its own.
+// Niche/hobby/tool categories FLIP hunts across on its own. These carry real
+// Amazon->eBay spread (eBay buyers pay a premium for specialty gear) — unlike
+// commodity home goods, where eBay just matches Amazon. A live mini-hunt across
+// these surfaced genuine winners (e.g. baitcaster reels, +$10 net).
 const EVERGREEN = [
-  "led strip lights",
-  "phone tripod stand",
-  "car phone mount",
-  "kitchen gadgets set",
-  "dog chew toys",
-  "cat scratcher",
-  "resistance bands set",
-  "insulated water bottle",
-  "storage bins organizer",
-  "desk organizer",
-  "garden hose nozzle",
-  "camping lantern",
-  "makeup brush set",
-  "kids art supplies",
-  "jigsaw puzzle",
-  "grill accessories set",
-  "cooler bag",
-  "yoga mat",
-  "travel pillow",
-  "cleaning brush set",
-  "spice rack organizer",
-  "wall hooks adhesive",
-  "reusable food bags",
-  "label maker",
+  "baitcaster fishing reel",
+  "spinning fishing reel",
+  "fishing tackle kit",
+  "tactical flashlight rechargeable",
+  "hair clippers cordless",
+  "massage gun deep tissue",
+  "mechanical keyboard",
+  "dash cam",
+  "metal detector",
+  "pickleball paddle",
+  "knife sharpener",
+  "binoculars",
+  "rc car parts",
+  "drone accessories",
+  "walkie talkie",
+  "pet grooming kit",
+  "tool organizer",
+  "soldering kit",
+  "dog training collar",
+  "trail camera",
+  "ratchet straps",
+  "car detailing kit",
+  "archery release aid",
+  "fishfinder",
 ];
 
 // Builds the hunt's seed list with zero user input: upcoming-seasonal terms
 // first, then a slice of evergreen categories that rotates by the day so each
 // hunt explores different ground.
 export function buildHuntSeeds(now: Date = new Date(), count = 4): string[] {
+  // At most one seasonal seed — seasonal decor is mostly commodity with no
+  // spread, so let the niche evergreen categories drive the hunt.
   const seasonal = getSeasonalSuggestions(now, 45)
     .flatMap((s) => s.terms)
-    .slice(0, 3);
+    .slice(0, 1);
 
   const startOfYear = new Date(now.getFullYear(), 0, 0).getTime();
   const dayOfYear = Math.floor((now.getTime() - startOfYear) / 86_400_000);
