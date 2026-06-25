@@ -3,6 +3,8 @@
 //   - cosmetics / beauty consumables (gated, expire, authenticity/VeRO risk)
 //   - breakable goods, esp. glass/ceramic (shatter in transit -> returns/losses)
 //   - food & dietary supplements (expiry, FDA/eBay restrictions, gated)
+//   - pet items (operator preference)
+//   - fragile/damageable electronics, esp. drones & RC aircraft (break in transit)
 //
 // Matched whole-word against the lowercased title (see isExcludedCategory), and
 // deliberately precision-first: terms were stress-tested so they don't catch
@@ -56,7 +58,30 @@ const FOOD_SUPPLEMENTS = [
   "granola bar", "fruit snacks", "energy drink",
 ];
 
-const EXCLUDED = [...COSMETICS, ...BREAKABLE, ...FOOD_SUPPLEMENTS];
+// Pet items — operator doesn't want them.
+const PET = [
+  "dog", "puppy", "kitten", "pet", "aquarium", "kennel", "leash", "harness",
+  "cat litter", "litter box", "cat tree", "cat toy", "chew toy", "dog toy",
+  "dog bed", "dog collar", "scratching post", "bird cage", "hamster", "reptile",
+  "fish tank", "flea", "pet feeder", "pet fountain", "aquarium filter",
+];
+
+// Fragile / damageable in transit — delicate electronics, esp. drones and RC
+// aircraft, which break or malfunction in shipping (returns/losses). Sturdy
+// electronics (flashlight, dash cam) are fine; this is the flying/delicate set.
+const DAMAGEABLE = [
+  "drone", "drones", "quadcopter", "quadcopters", "fpv", "rc helicopter",
+  "rc plane", "rc airplane", "rc jet", "rc glider", "remote control helicopter",
+  "remote control airplane", "remote control plane", "model rocket",
+];
+
+const EXCLUDED = [
+  ...COSMETICS,
+  ...BREAKABLE,
+  ...FOOD_SUPPLEMENTS,
+  ...PET,
+  ...DAMAGEABLE,
+];
 
 // Fragile dishware/decor often puts an adjective between the material and the
 // form ("ceramic COFFEE mug", "glass SALAD bowl"), which a fixed phrase misses.
