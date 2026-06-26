@@ -144,6 +144,7 @@ export type AmazonDetail = {
   shipsFromAmazon: boolean | null; // null = unknown (scrape returned nothing)
   inStock: boolean | null;
   discounted: boolean; // current price well below list price (may revert)
+  hasVariants: boolean | null; // size/color/model options -> comp match unreliable
   seller: string;
 };
 
@@ -192,6 +193,19 @@ export async function amazonDetails(
     const avail = String(it.availability ?? "").toLowerCase();
     const price = num(it.price);
     const list = num(it.list_price);
+    // Variant detection: the actor returns `default_variant` (the parent ASIN's
+    // selected variant) and often a `variants` / `variations` array. Treat as
+    // multi-variant when either is present — comp matching by title gets noisy
+    // across sizes/colors/models, so we skip these for dropship safety.
+    const variants = it.variants ?? it.variations ?? it.variantAsins;
+    const hasVariantArray =
+      Array.isArray(variants) && variants.length > 1;
+    const hasDefaultVariant =
+      it.default_variant != null &&
+      typeof it.default_variant === "object" &&
+      Object.keys(it.default_variant as object).length > 0;
+    const sawAnyVariantField =
+      "variants" in it || "variations" in it || "default_variant" in it;
     out.set(asin, {
       seller,
       shipsFromAmazon: seller ? /amazon/i.test(seller) : null,
@@ -202,6 +216,9 @@ export async function amazonDetails(
         Number.isFinite(price) && Number.isFinite(list) && list > 0
           ? price < list * 0.85
           : false,
+      hasVariants: sawAnyVariantField
+        ? hasVariantArray || hasDefaultVariant
+        : null,
     });
   }
   return out;

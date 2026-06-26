@@ -96,9 +96,15 @@ export async function runHunt(
       c.shipsFromAmazon = d.shipsFromAmazon;
       c.inStock = d.inStock;
       c.discounted = d.discounted;
+      c.hasVariants = d.hasVariants;
     }
   }
-  const winners = ranked.filter((c) => c.inStock !== false);
+  // Drop confirmed out-of-stock AND confirmed multi-variant items — comp match
+  // is unreliable across sizes/colors so the net is suspect, and you'd risk
+  // ordering the wrong variant for the eBay buyer. Unknowns (null) pass through.
+  const winners = ranked.filter(
+    (c) => c.inStock !== false && c.hasVariants !== true,
+  );
 
   // When winners are thin, surface the closest real products (some recent sold
   // history, best net) so a run is never an unhelpful blank.

@@ -540,6 +540,7 @@ function CandidateRow({ c, onScan }: { c: Candidate; onScan: () => void }) {
                 ? ` · ⚠ verify seller`
                 : ""}
             {c.discounted ? " · ⚠ on sale (price may rise)" : ""}
+            {c.hasVariants === null ? " · ⚠ verify variant" : ""}
           </span>
           {c.isPrime ? (
             <span

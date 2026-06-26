@@ -29,6 +29,7 @@ export type Candidate = {
   shipsFromAmazon?: boolean | null;
   inStock?: boolean | null;
   discounted?: boolean; // current Amazon price well below list (may revert)
+  hasVariants?: boolean | null; // multi-variant listing -> comp match unreliable
 };
 
 export type DiscoverOutput = {
